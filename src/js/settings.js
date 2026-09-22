@@ -66,6 +66,7 @@ export function normalizeSettings(raw = {}) {
     targetLanguage: raw.targetLanguage || 'zh-CN',
     sourceLanguage: raw.sourceLanguage || 'en',
     translationEngine: raw.translationEngine || 'online',
+    translationProviderId: raw.translationProviderId || selected?.id || '',
     translationStyle: raw.translationStyle || '学术论文',
     onboardingDone: raw.onboardingDone === true,
     webdav: {

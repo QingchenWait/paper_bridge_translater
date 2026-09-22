@@ -153,8 +153,8 @@
     margin: 0 1rem;
   }
   .document-bar {
-    padding: 1rem;
-    min-height: 6rem;
+    padding: 0.55rem 1rem;
+    min-height: 3.6rem;
   }
   .document-tab {
     max-width: 22rem;

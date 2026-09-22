@@ -10,9 +10,7 @@ export function initMobileLayout() {
   document
     .querySelectorAll('[data-mobile-pane]')
     .forEach((button) => button.addEventListener('click', () => setMobilePane(button.dataset.mobilePane)));
-  document.addEventListener('selection-translated', () => {
-    if (media.matches) setMobilePane('assistant');
-  });
+  // Stay on the reader after selecting: annotation actions need the same range.
   const viewport = () =>
     document.documentElement.style.setProperty(
       '--viewport-height',

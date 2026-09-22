@@ -107,15 +107,34 @@ export async function requestLlm({
     }
     body = { model: provider.model, messages: requestMessages, stream: true };
   }
-  const response = await fetch(
-    `${base}/${provider.protocol === 'responses' ? 'responses' : 'chat/completions'}`,
-    {
+  const endpoint = `${base}/${provider.protocol === 'responses' ? 'responses' : 'chat/completions'}`;
+  const send = (payload) =>
+    fetch(endpoint, {
       method: 'POST',
       headers: headers(provider),
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
       signal,
-    },
-  );
+    });
+  let response = await send(body);
+  if (response.status === 400 && pdf && provider.pdfInput && provider.protocol !== 'responses') {
+    const errorBody = await response.clone().text();
+    // Some Chat-compatible gateways validate flattened file parts instead of
+    // OpenAI's nested `file` object. Retry only this specific schema rejection.
+    if (/file must have (?:a )?file_id or file_data/i.test(errorBody)) {
+      const compatible = {
+        ...body,
+        messages: body.messages.map((message) => ({
+          ...message,
+          content: Array.isArray(message.content)
+            ? message.content.map((part) =>
+                part.type === 'file' && part.file ? { type: 'file', ...part.file } : part,
+              )
+            : message.content,
+        })),
+      };
+      response = await send(compatible);
+    }
+  }
   onStage('LLM 分析中');
   if (!response.ok) {
     const detail = await response.text();

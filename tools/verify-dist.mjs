@@ -89,7 +89,6 @@ try {
   if (exported.getPageCount() !== 1) throw new Error('Exported PDF has incorrect page count');
   await page.reload();
   await page.locator('.annotation-text').waitFor();
-  await page.getByRole('button', { name: '文字高亮', exact: true }).click();
   await page.evaluate(() => {
     const span = document.querySelector('.textLayer span');
     const range = document.createRange();
@@ -100,6 +99,7 @@ try {
       .getElementById('pdf-scroll')
       .dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }));
   });
+  await page.getByRole('button', { name: '文字高亮', exact: true }).click();
   await page.locator('.mark-highlight').waitFor();
   const highlightColor = await page
     .locator('.mark-highlight')

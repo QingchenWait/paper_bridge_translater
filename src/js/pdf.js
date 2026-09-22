@@ -1,7 +1,8 @@
 import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { all, put, patch, get } from './storage.js';
+import { all, put, patch, get, database } from './storage.js';
 import { uid } from './utils.js';
+import { planSelectionAction, selectionActionState } from './selection-actions.js';
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 const base = import.meta.env.BASE_URL;
 export async function loadPdf(blob, onPassword) {
@@ -69,9 +70,13 @@ export class PdfViewer {
     });
     document.addEventListener('selectionchange', () => {
       clearTimeout(this.selectionTimer);
-      this.selectionTimer = setTimeout(() => {
-        if (matchMedia('(pointer: coarse)').matches) this.captureSelection();
-      }, 600);
+      this.selectionTimer = setTimeout(
+        () => {
+          if (!document.activeElement?.closest('#pdf-toolbar, #overlay-root, #color-popover'))
+            this.captureSelection();
+        },
+        matchMedia('(pointer: coarse)').matches ? 250 : 60,
+      );
     });
   }
   async open(doc, pdf) {
@@ -82,6 +87,7 @@ export class PdfViewer {
     this.rendered.clear();
     this.container.replaceChildren();
     this.selection = null;
+    this.callbacks.selectionState?.({});
     this.doc = doc;
     this.pdf = pdf;
     this.page = doc.page || 1;
@@ -90,6 +96,7 @@ export class PdfViewer {
     await this.layout();
   }
   async layout() {
+    this.clearSelection();
     const generation = ++this.generation;
     this.observer?.disconnect();
     for (const task of this.tasks.values()) task.cancel();
@@ -98,6 +105,8 @@ export class PdfViewer {
     const first = await this.pdf.getPage(1);
     if (generation !== this.generation) return;
     const vp = first.getViewport({ scale: 1 });
+    this.layoutWidth = this.container.clientWidth;
+    this.layoutDpr = window.devicePixelRatio || 1;
     this.scale =
       this.zoom === 'fit' ? Math.max(0.25, (this.container.clientWidth - 44) / vp.width) : Number(this.zoom);
     this.container.replaceChildren();
@@ -154,13 +163,16 @@ export class PdfViewer {
     if (generation !== this.generation) return;
     const viewport = page.getViewport({ scale: this.scale });
     // Bound each rendered page to six million pixels, including 4K/high-DPI screens.
-    const ratio = Math.min(devicePixelRatio || 1, 2, Math.sqrt(6000000 / (viewport.width * viewport.height)));
+    const ratio = Math.min(
+      Math.max(devicePixelRatio || 1, 2, 1.5 / this.scale),
+      Math.sqrt(6000000 / (viewport.width * viewport.height)),
+    );
     shell.style.width = `${viewport.width}px`;
     shell.style.height = `${viewport.height}px`;
     const canvas = document.createElement('canvas');
     canvas.className = 'page-canvas';
-    canvas.width = Math.floor(viewport.width * ratio);
-    canvas.height = Math.floor(viewport.height * ratio);
+    canvas.width = Math.ceil(viewport.width * ratio);
+    canvas.height = Math.ceil(viewport.height * ratio);
     const text = document.createElement('div');
     text.className = 'textLayer';
     const annotations = document.createElement('div');
@@ -173,7 +185,7 @@ export class PdfViewer {
     const task = page.render({
       canvasContext: canvas.getContext('2d'),
       viewport,
-      transform: ratio === 1 ? null : [ratio, 0, 0, ratio, 0, 0],
+      transform: [canvas.width / viewport.width, 0, 0, canvas.height / viewport.height, 0, 0],
     });
     this.tasks.set(number, task);
     try {
@@ -210,15 +222,19 @@ export class PdfViewer {
     this.container.dataset.tool = tool;
     this.container
       .querySelectorAll('.ink-layer')
-      .forEach(
-        (el) => (el.style.pointerEvents = ['pen', 'eraser', 'text', 'note'].includes(tool) ? 'auto' : 'none'),
-      );
+      .forEach((el) => (el.style.pointerEvents = ['pen', 'eraser', 'text'].includes(tool) ? 'auto' : 'none'));
   }
   captureSelection() {
     const selection = window.getSelection();
-    if (!selection?.rangeCount || selection.isCollapsed) return;
+    if (!selection?.rangeCount || selection.isCollapsed) {
+      this.clearSelection(false);
+      return;
+    }
     const range = selection.getRangeAt(0);
-    if (!this.container.contains(range.commonAncestorContainer)) return;
+    if (!this.container.contains(range.commonAncestorContainer)) {
+      this.clearSelection(false);
+      return;
+    }
     const value = selection.toString().trim();
     if (!value) return;
     const rects = [];
@@ -266,24 +282,57 @@ export class PdfViewer {
     if (this.selection?.text === value && JSON.stringify(this.selection.rects) === JSON.stringify(rects))
       return;
     this.selection = { text: value, rects };
-    if (['highlight', 'underline'].includes(this.tool)) {
-      this.annotateSelection(this.tool, this.color).catch(this.callbacks.error);
-      selection.removeAllRanges();
-    } else this.callbacks.selection(value);
+    this.callbacks.selectionState?.(selectionActionState(this.annotations, this.selection));
+    this.callbacks.selection(value);
   }
-  async annotateSelection(type, color) {
-    if (!this.selection?.rects.length) return false;
-    const selection = this.selection;
-    for (const page of new Set(selection.rects.map((r) => r.page)))
-      await this.addAnnotation({
-        type,
-        color,
-        page,
-        rects: selection.rects.filter((r) => r.page === page),
-        selectedText: selection.text,
-      });
+  clearSelection(clearNative = true) {
     this.selection = null;
-    return true;
+    if (clearNative) window.getSelection()?.removeAllRanges();
+    this.callbacks.selectionState?.({});
+  }
+  async applySelectionAction(type, color) {
+    if (this.selectionBusy || !this.selection?.rects.length) return false;
+    this.selectionBusy = true;
+    const documentId = this.doc.id;
+    const selection = structuredClone(this.selection);
+    try {
+      const changes = await planSelectionAction(type, this.annotations, selection, {
+        color,
+        inputText: this.callbacks.inputText,
+      });
+      if (!changes.length || this.doc.id !== documentId) return false;
+      const now = Date.now();
+      for (const change of changes) {
+        change.after = {
+          id: uid(),
+          documentId,
+          createdAt: now,
+          deleted: false,
+          ...change.after,
+          updatedAt: now,
+        };
+      }
+      await this.commitAnnotationChanges(changes.map((c) => c.after));
+      this.history.set(documentId, [...(this.history.get(documentId) || []), { changes }]);
+      this.future.set(documentId, []);
+      this.clearSelection();
+      this.callbacks.saved();
+      return true;
+    } finally {
+      this.selectionBusy = false;
+    }
+  }
+  async commitAnnotationChanges(rows) {
+    const tx = (await database()).transaction('annotations', 'readwrite');
+    for (const row of rows) await tx.store.put({ ...row, updatedAt: Date.now() });
+    await tx.done;
+    for (const row of rows) {
+      if (row.documentId !== this.doc.id) continue;
+      const i = this.annotations.findIndex((a) => a.id === row.id);
+      if (i < 0) this.annotations.push(row);
+      else this.annotations[i] = row;
+    }
+    for (const page of new Set(rows.map((r) => r.page))) this.drawAnnotations(page);
   }
   async addAnnotation(value) {
     const documentId = this.doc.id;
@@ -313,6 +362,22 @@ export class PdfViewer {
     const stack = from.get(id) || [];
     const action = stack.pop();
     if (!action) return;
+    if (action.changes) {
+      try {
+        await this.commitAnnotationChanges(
+          action.changes.map((change) =>
+            redo ? change.after : change.before || { ...change.after, deleted: true },
+          ),
+        );
+      } catch (error) {
+        stack.push(action);
+        throw error;
+      }
+      to.set(id, [...(to.get(id) || []), action]);
+      this.callbacks.selectionState?.(selectionActionState(this.annotations, this.selection));
+      this.callbacks.saved();
+      return;
+    }
     const row = await patch('annotations', action.id, { deleted: redo ? action.after : action.before });
     to.set(id, [...(to.get(id) || []), action]);
     this.annotations = this.annotations.map((a) => (a.id === row.id ? row : a));
@@ -414,7 +479,7 @@ export class PdfViewer {
           this.drawAnnotations(page);
           this.callbacks.saved();
         }
-      } else if (['text', 'note'].includes(tool)) {
+      } else if (tool === 'text') {
         try {
           const text = await this.callbacks.inputText(tool);
           if (text && this.doc.id === documentId)

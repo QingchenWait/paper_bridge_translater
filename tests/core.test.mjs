@@ -240,3 +240,50 @@ test('WebDAV refuses missing ETag and concurrent 412 writes without losing local
     globalThis.fetch = original;
   }
 });
+test('PDF gateway field compatibility retries only the reported 400 schema error and preserves bytes', async () => {
+  const original = globalThis.fetch;
+  const bodies = [];
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    bodies.push(body);
+    return bodies.length === 1
+      ? Response.json(
+          { error: { message: '.messages[1]: file must have a file_id or file_data' } },
+          { status: 400 },
+        )
+      : Response.json({ choices: [{ message: { content: '完整译文' }, finish_reason: 'stop' }] });
+  };
+  try {
+    const result = await requestLlm({
+      provider: { baseUrl: 'https://gateway.test/v1', model: 'vision', protocol: 'chat', pdfInput: true },
+      messages: [
+        { role: 'system', content: 'translate' },
+        { role: 'user', content: 'all pages' },
+      ],
+      pdf: { name: 'all.pdf', blob: new Blob(['%PDF-1.7\nall pages']) },
+    });
+    assert.equal(result.text, '完整译文');
+    assert.equal(bodies.length, 2);
+    const first = bodies[0].messages[1].content[0];
+    const second = bodies[1].messages[1].content[0];
+    assert.equal(first.file.file_data, second.file_data);
+    assert.equal(second.filename, 'all.pdf');
+    assert.equal(bodies[1].messages[1].content[1].text, 'all pages');
+    bodies.length = 0;
+    globalThis.fetch = async (_url, options) => {
+      bodies.push(JSON.parse(options.body));
+      return Response.json({ error: { message: 'model unsupported' } }, { status: 400 });
+    };
+    await assert.rejects(
+      requestLlm({
+        provider: { baseUrl: 'https://gateway.test/v1', model: 'text', protocol: 'chat', pdfInput: true },
+        messages: [{ role: 'user', content: 'read' }],
+        pdf: { name: 'file.pdf', blob: new Blob(['%PDF-1.7']) },
+      }),
+      /model unsupported/,
+    );
+    assert.equal(bodies.length, 1);
+  } finally {
+    globalThis.fetch = original;
+  }
+});

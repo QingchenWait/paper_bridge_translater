@@ -112,6 +112,32 @@ export function modal(title, body, { wide = false, closable = true, onClose } = 
   setTimeout(() => element.querySelector('input,button,textarea')?.focus(), 50);
   return { element, close };
 }
+export function anchoredPopover(anchor, title, body) {
+  const dialog = modal(title, body);
+  const backdrop = dialog.element.parentElement;
+  backdrop.classList.add('anchored-backdrop');
+  dialog.element.classList.add('translation-popover');
+  const position = () => {
+    const bounds = anchor.getBoundingClientRect();
+    const width = Math.min(360, innerWidth - 20);
+    dialog.element.style.width = `${width}px`;
+    dialog.element.style.left = `${Math.max(10, Math.min(innerWidth - width - 10, bounds.right - width))}px`;
+    dialog.element.style.top = `${bounds.bottom + 8}px`;
+    dialog.element.style.maxHeight = `${Math.max(120, innerHeight - bounds.bottom - 18)}px`;
+  };
+  position();
+  window.addEventListener('resize', position);
+  const close = dialog.close;
+  // Every modal close path (outside click / Escape / close button) removes listeners.
+  const observer = new MutationObserver(() => {
+    if (!dialog.element.isConnected) {
+      window.removeEventListener('resize', position);
+      observer.disconnect();
+    }
+  });
+  observer.observe(document.getElementById('overlay-root'), { childList: true });
+  return { ...dialog, close };
+}
 export function inputDialog(
   title,
   { value = '', multiline = false, password = false, remove = false, label = '内容' } = {},

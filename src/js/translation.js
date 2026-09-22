@@ -26,38 +26,79 @@ export async function onlineTranslate(text, source = 'en', target = 'zh-CN', sig
   }
   return output.join('');
 }
-export async function lookupWord(word, signal) {
-  const requestSignal = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(18000)]);
-  const response = await fetch(
-    `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word.toLowerCase())}`,
-    { signal: requestSignal },
-  );
-  if (!response.ok)
-    throw new Error(
-      response.status === 404
-        ? '词典未收录此单词，可检查拼写或选择完整句子。'
-        : `词典服务不可用 (${response.status})`,
-    );
-  const entries = await response.json();
-  const supplemental = await Promise.allSettled([
-    onlineTranslate(word, 'en', 'zh-CN', signal),
-    fetch(
-      `https://en.wiktionary.org/w/api.php?${new URLSearchParams({ action: 'parse', page: word.toLowerCase(), prop: 'text', format: 'json', origin: '*' })}`,
-      { signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(8000)]) },
-    ).then(async (response) => {
-      if (!response.ok) return [];
-      const json = await response.json();
-      const document = new DOMParser().parseFromString(json.parse?.text?.['*'] || '', 'text/html');
-      return [...document.querySelectorAll('.headword-line')]
-        .filter((line) => line.querySelector('[lang="en"]'))
-        .map((line) => line.textContent.trim());
-    }),
-  ]);
-  if (signal?.aborted) throw signal.reason;
-  return {
+const plainText = (html) => new DOMParser().parseFromString(html || '', 'text/html').body.textContent.trim();
+async function dictionaryJson(url, signal) {
+  const response = await fetch(url, {
+    signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(6500)]),
+  });
+  if (!response.ok) throw new Error(`词典请求失败 (${response.status})`);
+  return response.json();
+}
+export async function lookupWord(word, signal, onUpdate = () => {}) {
+  const state = {
     word,
-    entries,
-    chinese: supplemental[0].status === 'fulfilled' ? supplemental[0].value : '',
-    forms: supplemental[1].status === 'fulfilled' ? supplemental[1].value : [],
+    entries: [{ word, phonetics: [], meanings: [] }],
+    chinese: '',
+    forms: [],
+    source: '',
+    warning: '',
   };
+  const publish = () => {
+    if (!signal?.aborted) onUpdate({ ...state });
+  };
+  const encoded = encodeURIComponent(word.toLowerCase());
+  // Independent dictionaries race; a blocked primary never holds up a healthy alternative.
+  const definitions = Promise.any([
+    dictionaryJson(`https://api.dictionaryapi.dev/api/v2/entries/en/${encoded}`, signal).then((entries) => {
+      if (!Array.isArray(entries) || !entries[0]?.meanings?.length) throw new Error('词典暂无释义');
+      return { entries, source: 'Free Dictionary API' };
+    }),
+    dictionaryJson(`https://en.wiktionary.org/api/rest_v1/page/definition/${encoded}`, signal).then(
+      (json) => {
+        if (!json.en?.length) throw new Error('词典暂无英文释义');
+        return {
+          source: 'Wiktionary',
+          entries: [
+            {
+              word,
+              phonetics: [],
+              license: { name: 'CC BY-SA' },
+              meanings: json.en.map((item) => ({
+                partOfSpeech: item.partOfSpeech,
+                definitions: item.definitions.map((d) => ({
+                  definition: plainText(d.definition),
+                  example: plainText(d.examples?.[0] || d.parsedExamples?.[0]?.example),
+                })),
+                synonyms: [],
+              })),
+            },
+          ],
+        };
+      },
+    ),
+  ]).then((result) => {
+    Object.assign(state, result);
+    publish();
+  });
+  const chinese = onlineTranslate(word, 'en', 'zh-CN', signal).then((value) => {
+    state.chinese = value;
+    publish();
+  });
+  const forms = dictionaryJson(
+    `https://en.wiktionary.org/w/api.php?${new URLSearchParams({ action: 'parse', page: word.toLowerCase(), prop: 'text', format: 'json', origin: '*' })}`,
+    signal,
+  ).then((json) => {
+    const parsed = new DOMParser().parseFromString(json.parse?.text?.['*'] || '', 'text/html');
+    state.forms = [...parsed.querySelectorAll('.headword-line')]
+      .filter((line) => line.querySelector('[lang="en"]'))
+      .map((line) => line.textContent.trim());
+    publish();
+  });
+  const results = await Promise.allSettled([definitions, chinese, forms]);
+  if (signal?.aborted) throw signal.reason;
+  if (results[0].status === 'rejected') {
+    if (!state.chinese) throw new Error('在线词典暂时无法连接或未收录此词，请稍后重试。');
+    state.warning = '详细词典暂不可用，已显示在线获取的中文释义。';
+  }
+  return state;
 }

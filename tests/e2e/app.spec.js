@@ -39,6 +39,9 @@ async function importPdf(page, name) {
   await expect(page.locator('.pdf-page[data-page="1"] .textLayer span').first()).toBeVisible();
 }
 async function selectText(page, text) {
+  await expect(
+    page.locator('.pdf-page[data-page="1"] .textLayer span').filter({ hasText: text }).first(),
+  ).toBeVisible();
   await page.evaluate((value) => {
     const span = [...document.querySelectorAll('.pdf-page[data-page="1"] .textLayer span')].find((s) =>
       s.textContent.includes(value),
@@ -82,15 +85,18 @@ test('desktop imports, renders, annotates and restores PDFs after reload', async
   await importPdf(page);
   await expect(page.locator('.document-tab')).toHaveCount(1);
   await expect(page.locator('#page-input')).toHaveValue('1');
-  await page.getByRole('button', { name: '文字高亮', exact: true }).click();
   await selectText(page, 'parallel computation');
+  await page.getByRole('button', { name: '文字高亮', exact: true }).click();
   await expect(page.locator('.mark-highlight')).toHaveCount(1);
   await expect(page.locator('.mark-highlight')).toHaveCSS('background-color', 'rgb(255, 224, 130)');
   const highlight = await page.locator('.mark-highlight').boundingBox();
   expect(highlight.width).toBeGreaterThan(30);
   expect(highlight.height).toBeGreaterThan(5);
   expect(highlight.height).toBeLessThan(40);
-  await page.getByRole('button', { name: '文字高亮', exact: true }).click();
+  await expect(page.getByRole('button', { name: '文字高亮', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
   await page.getByRole('button', { name: '添加文本框', exact: true }).click();
   await page.locator('.pdf-page[data-page="1"] .ink-layer').click({ position: { x: 200, y: 130 } });
   await page.locator('#input-form textarea').fill('中文批注：核心方法');
@@ -383,4 +389,292 @@ test('encrypted archive restores documents, annotations and full conversations i
   await other.reload();
   await expect(other.locator('.document-tab')).toHaveCount(1);
   await context.close();
+});
+test('selection-first actions toggle independently and remove only the selected part', async ({ page }) => {
+  await setup(page);
+  await importPdf(page);
+  await page.route('https://api.mymemory.translated.net/**', (route) =>
+    route.fulfill({ json: { responseStatus: 200, responseData: { translatedText: '选择测试' } } }),
+  );
+  const highlight = page.getByRole('button', { name: '文字高亮', exact: true });
+  const underline = page.getByRole('button', { name: '文字下划线', exact: true });
+  const note = page.getByRole('button', { name: '批注', exact: true });
+  for (const btn of [highlight, underline, note]) {
+    await btn.click();
+    await expect(btn).toHaveAttribute('aria-pressed', 'false');
+  }
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('.mark')).toHaveCount(0);
+  await selectText(page, 'parallel computation');
+  await highlight.click();
+  await expect(highlight).toHaveAttribute('aria-pressed', 'false');
+  await selectText(page, 'parallel computation');
+  await expect(highlight).toHaveAttribute('aria-pressed', 'true');
+  await underline.click();
+  await expect(underline).toHaveAttribute('aria-pressed', 'false');
+  await selectText(page, 'parallel computation');
+  await expect(highlight).toHaveAttribute('aria-pressed', 'true');
+  await expect(underline).toHaveAttribute('aria-pressed', 'true');
+  await note.click();
+  await page.locator('#input-form textarea').fill('绑定文本的批注');
+  await page.locator('#input-form button[type=submit]').click();
+  await expect(note).toHaveAttribute('aria-pressed', 'false');
+  await selectText(page, 'parallel computation');
+  await expect(note).toHaveAttribute('aria-pressed', 'true');
+  await expect(highlight).toHaveAttribute('aria-pressed', 'true');
+  await expect(underline).toHaveAttribute('aria-pressed', 'true');
+  await highlight.click();
+  await expect(page.locator('.mark-highlight')).toHaveCount(0);
+  await expect(page.locator('.mark-underline')).toHaveCount(1);
+  await expect(page.locator('.annotation-note')).toHaveCount(1);
+  await selectText(page, 'parallel computation');
+  await note.click();
+  await expect(page.locator('.annotation-note')).toHaveCount(0);
+  await selectText(page, 'computation');
+  await underline.click();
+  await expect(page.locator('.mark-underline')).toHaveCount(1);
+  await selectText(page, 'computation');
+  await expect(underline).toHaveAttribute('aria-pressed', 'false');
+  await selectText(page, 'parallel');
+  await expect(underline).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: '撤销批注 (Ctrl+Z)', exact: true }).click();
+  await page.reload();
+  await expect(page.locator('.pdf-page[data-page="1"] .textLayer span').first()).toBeVisible();
+  await selectText(page, 'computation');
+  await expect(underline).toHaveAttribute('aria-pressed', 'true');
+});
+test('dictionary fallback displays definitions when the primary times out without using an LLM', async ({
+  page,
+}) => {
+  await setup(page);
+  await importPdf(page);
+  let llm = 0;
+  await page.route('https://api.dictionaryapi.dev/**', () => {});
+  await page.route('https://en.wiktionary.org/api/rest_v1/**', (route) =>
+    route.fulfill({
+      json: {
+        en: [
+          {
+            partOfSpeech: 'Noun',
+            definitions: [{ definition: '<b>Mental focus</b>.', examples: ['Pay attention.'] }],
+          },
+        ],
+      },
+    }),
+  );
+  await page.route('https://en.wiktionary.org/w/api.php*', (route) =>
+    route.fulfill({
+      json: {
+        parse: {
+          text: { '*': '<span class="headword-line"><b lang="en">attention</b> (plural attentions)</span>' },
+        },
+      },
+    }),
+  );
+  await page.route('https://api.mymemory.translated.net/**', (route) =>
+    route.fulfill({ json: { responseStatus: 200, responseData: { translatedText: '注意力' } } }),
+  );
+  await page.route('https://llm.test/**', (route) => {
+    llm++;
+    return route.abort();
+  });
+  await selectText(page, 'attention');
+  await expect(page.locator('.word-meaning')).toContainText('Mental focus');
+  await expect(page.locator('.chinese-meaning')).toHaveText('注意力');
+  await expect(page.locator('.error-card')).toHaveCount(0);
+  expect(llm).toBe(0);
+});
+test('one PDF save request writes once even when the button is activated twice', async ({ page }) => {
+  await setup(page);
+  await importPdf(page);
+  let downloads = 0;
+  page.on('download', () => downloads++);
+  await page.evaluate(() => {
+    window.saved = { pickers: 0, writes: 0, closes: 0, header: '' };
+    window.showSaveFilePicker = async () => {
+      saved.pickers++;
+      await new Promise((r) => setTimeout(r, 150));
+      return {
+        createWritable: async () => ({
+          write: async (blob) => {
+            saved.writes++;
+            saved.header = await blob.slice(0, 5).text();
+          },
+          close: async () => {
+            saved.closes++;
+          },
+        }),
+      };
+    };
+    const btn = document.querySelector('[data-action="download-pdf"]');
+    btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  await expect.poll(() => page.evaluate(() => window.saved.closes)).toBe(1);
+  expect(await page.evaluate(() => window.saved)).toEqual({
+    pickers: 1,
+    writes: 1,
+    closes: 1,
+    header: '%PDF-',
+  });
+  expect(downloads).toBe(0);
+});
+test('sub-100 percent zoom uses supersampled canvases and single-line tabs stay compact', async ({
+  page,
+}) => {
+  await setup(page);
+  await importPdf(page);
+  for (const zoom of ['50%', '75%', '100%']) {
+    await page.getByRole('button', { name: '缩放比例' }).click();
+    await page.getByRole('option', { name: zoom, exact: true }).click();
+    await expect(page.locator('.pdf-page[data-page="1"] .textLayer span').first()).toBeVisible();
+    const size = await page.locator('.pdf-page[data-page="1"] .page-canvas').evaluate((canvas) => ({
+      pixels: canvas.width * canvas.height,
+      width: canvas.width,
+      css: canvas.getBoundingClientRect().width,
+    }));
+    expect(size.width).toBeGreaterThanOrEqual(918);
+    expect(size.width / size.css).toBeGreaterThanOrEqual(1.99);
+    expect(size.pixels).toBeLessThan(6010000);
+  }
+  await expect(page.locator('.tab-caption small')).toHaveCount(0);
+  const tab = await page.locator('.document-tab').boundingBox();
+  expect(tab.height).toBeLessThan(45);
+});
+test('translation popover anchors below its button and uses the selected API', async ({ page }) => {
+  await setup(page);
+  await importPdf(page);
+  await configure(page);
+  await page.evaluate(async () => {
+    const { saveSettings, getSettings } = await import('/src/js/settings.js');
+    const s = await getSettings();
+    await saveSettings({
+      chatProviders: [
+        ...s.chatProviders,
+        { id: 'second', name: 'Second API', baseUrl: 'https://second.test/v1', model: 'second-model' },
+      ],
+    });
+  });
+  let used = '';
+  await page.route('https://second.test/v1/chat/completions', (route) => {
+    used = route.request().postDataJSON().model;
+    return route.fulfill({
+      json: { choices: [{ message: { content: '使用第二个 API 的译文' }, finish_reason: 'stop' }] },
+    });
+  });
+  const anchor = page.getByRole('button', { name: '翻译设置', exact: true });
+  await anchor.click();
+  const box = await anchor.boundingBox();
+  await expect
+    .poll(async () =>
+      Math.abs((await page.locator('.translation-popover').boundingBox()).y - box.y - box.height - 8),
+    )
+    .toBeLessThan(0.5);
+  const popup = await page.locator('.translation-popover').boundingBox();
+  expect(popup.width).toBeLessThanOrEqual(360);
+  await page.getByRole('button', { name: '翻译引擎', exact: true }).click();
+  await expect(page.getByRole('option')).toHaveCount(3);
+  await page.getByRole('option', { name: 'Second API · second-model', exact: true }).click();
+  await page.locator('[data-action="save-translation"]').click();
+  await selectText(page, 'parallel computation');
+  await expect(page.locator('#selection-result')).toContainText('第二个 API');
+  expect(used).toBe('second-model');
+});
+test('full translation collapses at the first streamed text and keeps its status bar sticky', async ({
+  page,
+}) => {
+  await setup(page);
+  await importPdf(page);
+  await configure(page);
+  await page.evaluate(() => {
+    const original = window.fetch;
+    window.fetch = (url, options) => {
+      if (String(url) !== 'https://llm.test/v1/chat/completions') return original(url, options);
+      return Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              const encode = new TextEncoder();
+              controller.enqueue(
+                encode.encode(
+                  `data: ${JSON.stringify({ choices: [{ delta: { content: '# 流式译文\n\n' + '这是正文段落。\n\n'.repeat(100) } }] })}\n\n`,
+                ),
+              );
+              setTimeout(() => {
+                controller.enqueue(encode.encode('data: [DONE]\n\n'));
+                controller.close();
+              }, 2500);
+            },
+          }),
+          { headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+      );
+    };
+  });
+  await page.locator('[data-assistant-tab="full"]').click();
+  await page.getByRole('button', { name: '开始全文翻译', exact: true }).click();
+  await expect(page.locator('#full-controls')).toHaveClass(/is-collapsed/);
+  await expect(page.locator('[data-full-stage]')).toHaveText('结果转换中');
+  await expect(page.locator('#full-result h1')).toHaveText('流式译文');
+  await expect.poll(async () => (await page.locator('#full-controls').boundingBox()).height).toBeLessThan(1);
+  await page.locator('#assistant-content').evaluate((el) => (el.scrollTop = 600));
+  const bar = await page.locator('.full-summary').boundingBox(),
+    area = await page.locator('#assistant-content').boundingBox();
+  expect(Math.abs(bar.y - area.y)).toBeLessThan(3);
+  await page.getByRole('button', { name: '展开翻译设置' }).click();
+  await expect(page.locator('#full-controls')).not.toHaveClass(/is-collapsed/);
+  await page.locator('#assistant-content').evaluate((el) => (el.scrollTop = 0));
+  await expect(page.getByRole('button', { name: '全文目标语言' })).toBeVisible();
+  await expect(page.locator('[data-full-stage]')).toHaveText('翻译完成');
+  await page.getByRole('button', { name: '收起翻译设置' }).click();
+  await expect(page.locator('#full-controls')).toHaveClass(/is-collapsed/);
+  await page.screenshot({ path: 'test-results/full-collapsed.png', animations: 'disabled' });
+});
+test('mobile selection remains available for annotations and compact translation controls fit', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setup(page);
+  await importPdf(page);
+  await page.route('https://api.mymemory.translated.net/**', (route) =>
+    route.fulfill({ json: { responseStatus: 200, responseData: { translatedText: '手机端译文' } } }),
+  );
+  await selectText(page, 'parallel computation');
+  await expect(page.locator('.reader-panel')).toBeVisible();
+  await page.getByRole('button', { name: '文字高亮', exact: true }).click();
+  await expect(page.locator('.mark-highlight')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: '文字高亮', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
+  expect((await page.locator('.document-tab').boundingBox()).height).toBeGreaterThanOrEqual(44);
+  await page.locator('[data-mobile-pane="assistant"]').click();
+  await expect(page.locator('#selection-result')).toContainText('手机端译文');
+  await page.getByRole('button', { name: '翻译设置', exact: true }).click();
+  await page.getByRole('button', { name: '翻译引擎', exact: true }).click();
+  await expect(page.getByRole('option', { name: 'MyMemory · 在线翻译' })).toBeVisible();
+  await page.screenshot({ path: 'test-results/mobile-translation-popover.png', animations: 'disabled' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+test('a direct PDF response is saved once without entering the local PDF export branch', async ({ page }) => {
+  await setup(page);
+  await importPdf(page);
+  await configure(page);
+  const returned = await fixture('translated.pdf');
+  await page.route('https://llm.test/v1/chat/completions', (route) =>
+    route.fulfill({ contentType: 'application/pdf', body: returned.buffer }),
+  );
+  await page.evaluate(() => {
+    window.saveCount = 0;
+    window.showSaveFilePicker = async () => {
+      saveCount++;
+      return { createWritable: async () => ({ write: async () => {}, close: async () => {} }) };
+    };
+  });
+  await page.locator('[data-assistant-tab="full"]').click();
+  await page.getByRole('button', { name: '全文展示方式' }).click();
+  await page.getByRole('option', { name: '转换为 PDF 并下载', exact: true }).click();
+  await page.getByRole('button', { name: '开始全文翻译', exact: true }).click();
+  await expect(page.locator('.result-toolbar')).toContainText('翻译完成');
+  expect(await page.evaluate(() => window.saveCount)).toBe(1);
 });

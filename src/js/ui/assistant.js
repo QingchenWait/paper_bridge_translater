@@ -14,6 +14,7 @@ import {
   selected,
   bindSelects,
   modal,
+  anchoredPopover,
   toast,
   inputDialog,
 } from './components.js';
@@ -24,6 +25,8 @@ export class Assistant {
     this.selections = new Map();
     this.currentThreads = new Map();
     this.jobs = new Map();
+    this.fullPanels = new Map();
+    this.exportingTranslations = new Set();
     this.epoch = 0;
     this.root = document.getElementById('assistant-content');
     document.querySelectorAll('[data-assistant-tab]').forEach(
@@ -54,7 +57,7 @@ export class Assistant {
     this.root.innerHTML = `<div class="selection-content"><section class="translation-section"><header><h3>原文 <span class="section-tag">${isSingleWord(entry.original) ? 'WORD' : 'SOURCE'}</span></h3><div>${iconButton('speak-source', 'volume-2', '朗读原文')}${iconButton('copy-source', 'copy', '复制原文')}</div></header><p class="source-text">${esc(entry.original)}</p></section><section class="translation-section"><header><h3>${entry.dictionary ? '词典释义' : '翻译结果'} <span class="section-tag">${esc(entry.engine || '')}</span></h3><div>${iconButton('speak-result', 'volume-2', '朗读译文')}${iconButton('copy-result', 'copy', '复制译文')}</div></header><div id="selection-result" class="markdown"></div>${entry.loading ? '<div class="inline-loading"><span class="spinner small"></span>正在理解这段文字…</div>' : ''}${entry.error ? `<div class="error-card">${icon('circle-alert')}<span>${esc(entry.error)}</span></div>${button('retry-selection', 'refresh-cw', '重试')}` : ''}</section><div class="translation-footnote">${icon('check')}自动整理 PDF 断词与换行</div></div>`;
     const target = this.root.querySelector('#selection-result');
     if (entry.dictionary) {
-      const { entries, chinese, forms } = entry.dictionary;
+      const { entries, chinese, forms, source, warning } = entry.dictionary;
       const first = entries[0];
       target.innerHTML = `<div class="dictionary-heading"><strong>${esc(first.word)}</strong><span>${esc(first.phonetic || first.phonetics?.find((p) => p.text)?.text || '')}</span>${iconButton('word-audio', 'volume-2', '播放词典发音')}</div>${chinese ? `<p class="chinese-meaning">${esc(chinese)}</p>` : '<p class="note">中文释义暂不可用，下面为词典原文释义。</p>'}${entries
         .flatMap((e) => e.meanings)
@@ -64,7 +67,7 @@ export class Assistant {
         )
         .join(
           '',
-        )}${forms?.length ? `<p class="note"><b>词形变化</b><br>${forms.map(esc).join('<br>')}</p>` : '<p class="note">此词条暂无可用的词形变化数据。</p>'}<p class="dictionary-credit">Free Dictionary API · ${esc(first.license?.name || '')} · MyMemory · <a href="https://en.wiktionary.org/wiki/${encodeURIComponent(first.word)}" target="_blank" rel="noopener noreferrer">Wiktionary 词形</a></p>`;
+        )}${forms?.length ? `<p class="note"><b>词形变化</b><br>${forms.map(esc).join('<br>')}</p>` : '<p class="note">此词条暂无可用的词形变化数据。</p>'}${warning ? `<p class="note">${esc(warning)}</p>` : ''}<p class="dictionary-credit">${esc(source || '在线词典')} · ${esc(first.license?.name || '')} · MyMemory · <a href="https://en.wiktionary.org/wiki/${encodeURIComponent(first.word)}" target="_blank" rel="noopener noreferrer">Wiktionary 词形</a></p>`;
       this.root.querySelector('[data-action="word-audio"]').onclick = () => {
         const url = entries.flatMap((e) => e.phonetics || []).find((p) => /^https:\/\//.test(p.audio))?.audio;
         if (url) new Audio(url).play().catch(() => this.speak(entry.original, 'en'));
@@ -113,7 +116,11 @@ export class Assistant {
         this.renderSelection();
     };
     try {
-      if (isSingleWord(text)) entry.dictionary = await lookupWord(text, controller.signal);
+      if (isSingleWord(text))
+        entry.dictionary = await lookupWord(text, controller.signal, (partial) => {
+          entry.dictionary = partial;
+          refresh();
+        });
       else if (settings.translationEngine === 'online')
         entry.result = await onlineTranslate(
           text,
@@ -123,7 +130,7 @@ export class Assistant {
         );
       else
         await requestLlm({
-          provider: getProvider(settings),
+          provider: getProvider(settings, settings.translationProviderId || settings.defaultChatProviderId),
           signal: controller.signal,
           messages: [
             {
@@ -146,15 +153,18 @@ export class Assistant {
   }
   async settings() {
     const settings = await getSettings();
-    const dialog = modal(
+    const dialog = anchoredPopover(
+      document.getElementById('translation-settings'),
       '翻译设置',
       `<div class="settings-form"><div class="field"><span>翻译引擎</span>${select(
         'translation-engine',
         [
-          ['online', '在线翻译 · 无需配置'],
-          ['llm', 'LLM · 默认 API'],
+          ['online', 'MyMemory · 在线翻译'],
+          ...settings.chatProviders.map((p) => [`llm:${p.id}`, `${p.name} · ${p.model || 'LLM'}`]),
         ],
-        settings.translationEngine,
+        settings.translationEngine === 'online'
+          ? 'online'
+          : `llm:${settings.translationProviderId || settings.defaultChatProviderId}`,
         '翻译引擎',
       )}</div><div class="field-pair"><div class="field"><span>原文语言</span>${select('source-language', LANGUAGES, settings.sourceLanguage, '原文语言')}</div><div class="field"><span>目标语言</span>${select('target-language', LANGUAGES, settings.targetLanguage, '目标语言')}</div></div><div class="field"><span>LLM 翻译风格</span>${select(
         'translation-style',
@@ -171,7 +181,10 @@ export class Assistant {
     dialog.element.querySelector('[data-action="save-translation"]').onclick = async () => {
       try {
         await saveSettings({
-          translationEngine: selected('translation-engine'),
+          translationEngine: selected('translation-engine') === 'online' ? 'online' : 'llm',
+          translationProviderId: selected('translation-engine')?.startsWith('llm:')
+            ? selected('translation-engine').slice(4)
+            : settings.translationProviderId,
           sourceLanguage: selected('source-language'),
           targetLanguage: selected('target-language'),
           translationStyle: selected('translation-style'),
@@ -196,7 +209,9 @@ export class Assistant {
     if (epoch !== this.epoch) return;
     const job = this.jobs.get(`full:${doc.id}`);
     const latest = job?.record || records[0];
-    this.root.innerHTML = `<div class="full-content"><div class="panel-heading"><div class="panel-symbol">${icon('languages')}</div><h2>跨越整篇文章的语言边界</h2><p>保留章节结构、公式与表格，专注内容本身。</p></div><div class="full-options"><div class="field"><span>目标语言</span>${select('full-language', LANGUAGES, settings.targetLanguage, '全文目标语言')}</div><div class="field"><span>使用的 API</span>${select(
+    const panel = this.fullPanels.get(doc.id) || { collapsed: false, autoCollapsed: false };
+    this.fullPanels.set(doc.id, panel);
+    this.root.innerHTML = `<div class="full-content"><div class="full-summary" ${panel.autoCollapsed ? '' : 'hidden'}><span class="full-summary-progress ${job ? 'working' : ''}" role="${job ? 'progressbar' : 'status'}" aria-label="全文翻译进度"></span><span data-full-stage>${esc(job?.stage || (latest?.status === 'complete' ? '翻译完成' : '部分结果已保存'))}</span>${job ? iconButton('cancel-full-summary', 'stop-circle', '停止全文翻译') : ''}<button class="icon-button full-toggle" data-action="toggle-full-controls" aria-expanded="${!panel.collapsed}" aria-controls="full-controls" title="${panel.collapsed ? '展开翻译设置' : '收起翻译设置'}" aria-label="${panel.collapsed ? '展开翻译设置' : '收起翻译设置'}">${icon('chevron-down')}</button></div><div id="full-controls" class="full-controls ${panel.collapsed ? 'is-collapsed' : ''}"><div class="full-controls-inner"><div class="panel-heading"><div class="panel-symbol">${icon('languages')}</div><h2>跨越整篇文章的语言边界</h2><p>保留章节结构、公式与表格，专注内容本身。</p></div><div class="full-options"><div class="field"><span>目标语言</span>${select('full-language', LANGUAGES, settings.targetLanguage, '全文目标语言')}</div><div class="field"><span>使用的 API</span>${select(
       'full-provider',
       settings.chatProviders.map((p) => [p.id, `${p.name} · ${p.model}`]),
       settings.defaultChatProviderId,
@@ -217,7 +232,7 @@ export class Assistant {
       ],
       'local',
       'PDF 生成方式',
-    )}</div><p id="full-capability" class="note"></p>${job ? `<div class="progress-card"><span class="spinner"></span><strong id="full-stage">${esc(job.stage || 'LLM 分析中')}</strong>${button('cancel-full', 'stop-circle', '停止')}</div>` : button('start-full', 'sparkles', '开始全文翻译', 'primary full-width')}</div>${
+    )}</div><p id="full-capability" class="note"></p>${job ? `<div class="progress-card"><span class="spinner"></span><strong id="full-stage">${esc(job.stage || 'LLM 分析中')}</strong>${button('cancel-full', 'stop-circle', '停止')}</div>` : button('start-full', 'sparkles', '开始全文翻译', 'primary full-width')}</div></div></div>${
       latest
         ? `<div class="result-toolbar"><span>${latest.status === 'complete' ? '翻译完成' : latest.status === 'streaming' ? '正在生成' : '已保留部分结果'} · ${dateLabel(latest.createdAt)}</span><div>${iconButton('copy-full', 'copy', '复制全文')}${iconButton('export-full', 'download', '生成并下载 PDF')}${iconButton('open-translated', 'book-open', '在左侧打开译文 PDF')}</div></div>${
             records.length > 1
@@ -235,6 +250,12 @@ export class Assistant {
         : ''
     }</div>`;
     if (latest) mountMarkdown(this.root.querySelector('#full-result'), latest.content);
+    this.root.querySelector('#full-controls').inert = panel.collapsed;
+    this.root.querySelector('[data-action="toggle-full-controls"]').onclick = () =>
+      this.setFullCollapsed(doc.id, !panel.collapsed);
+    this.root
+      .querySelector('[data-action="cancel-full-summary"]')
+      ?.addEventListener('click', () => job?.controller.abort());
     bindSelects(this.root);
     const capability = () => {
       const p = settings.chatProviders.find((p) => p.id === selected('full-provider'));
@@ -296,12 +317,15 @@ export class Assistant {
       output,
     });
     const job = { record, controller: new AbortController(), stage: '读取 PDF' };
+    this.fullPanels.set(doc.id, { collapsed: false, autoCollapsed: false });
     this.jobs.set(key, job);
     await this.render();
     const update = () => {
       if (this.tab === 'full' && this.app.activeId === doc.id) {
         const status = this.root.querySelector('#full-stage');
         if (status) status.textContent = job.stage;
+        const summary = this.root.querySelector('[data-full-stage]');
+        if (summary) summary.textContent = job.stage;
         const result = this.root.querySelector('#full-result');
         if (result) mountMarkdown(result, record.content);
       }
@@ -331,6 +355,11 @@ export class Assistant {
         onDelta: async (_chunk, total) => {
           record.content = total;
           await patch('translations', record.id, { content: total });
+          const panel = this.fullPanels.get(doc.id);
+          if (total.trim() && !panel.autoCollapsed) {
+            panel.autoCollapsed = true;
+            this.setFullCollapsed(doc.id, true);
+          }
           update();
         },
       });
@@ -344,7 +373,7 @@ export class Assistant {
         status: 'complete',
         generatedDocumentId: record.generatedDocumentId,
       });
-      if (output === 'pdf' && !native) {
+      if (output === 'pdf' && !native && !result.pdf) {
         job.stage = '结果转换中';
         update();
         await this.exportTranslation(record, false);
@@ -363,20 +392,42 @@ export class Assistant {
       this.app.updateSaved();
     }
   }
+  setFullCollapsed(documentId, collapsed) {
+    const panel = this.fullPanels.get(documentId);
+    if (!panel) return;
+    panel.collapsed = collapsed;
+    if (this.app.activeId !== documentId || this.tab !== 'full') return;
+    const controls = this.root.querySelector('#full-controls');
+    if (!controls) return;
+    this.root.querySelector('.full-summary').hidden = !panel.autoCollapsed;
+    controls.classList.toggle('is-collapsed', collapsed);
+    controls.inert = collapsed;
+    const toggle = this.root.querySelector('.full-toggle');
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+    const label = collapsed ? '展开翻译设置' : '收起翻译设置';
+    toggle.setAttribute('aria-label', label);
+    toggle.title = label;
+  }
   async exportTranslation(record, open) {
-    let translated = record.generatedDocumentId ? await get('documents', record.generatedDocumentId) : null;
-    if (!translated) {
-      if (!record.content?.trim()) throw new Error('还没有可导出的译文');
-      toast('正在排版 PDF…');
-      const { markdownToPdf } = await import('../pdf-export.js');
-      const blob = await markdownToPdf(record.content);
-      const source = await get('documents', record.documentId);
-      translated = await this.app.importGenerated(blob, source, record.id);
-      record.generatedDocumentId = translated.id;
-      await patch('translations', record.id, { generatedDocumentId: translated.id });
+    if (this.exportingTranslations.has(record.id)) return;
+    this.exportingTranslations.add(record.id);
+    try {
+      let translated = record.generatedDocumentId ? await get('documents', record.generatedDocumentId) : null;
+      if (!translated) {
+        if (!record.content?.trim()) throw new Error('还没有可导出的译文');
+        toast('正在排版 PDF…');
+        const { markdownToPdf } = await import('../pdf-export.js');
+        const blob = await markdownToPdf(record.content);
+        const source = await get('documents', record.documentId);
+        translated = await this.app.importGenerated(blob, source, record.id);
+        record.generatedDocumentId = translated.id;
+        await patch('translations', record.id, { generatedDocumentId: translated.id });
+      }
+      if (open) await this.app.openDocument(translated.id);
+      else await saveFile((await get('files', translated.id)).blob, translated.name);
+    } finally {
+      this.exportingTranslations.delete(record.id);
     }
-    if (open) await this.app.openDocument(translated.id);
-    else await saveFile((await get('files', translated.id)).blob, translated.name);
   }
   async renderChat(epoch) {
     const doc = this.app.active;

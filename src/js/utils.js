@@ -20,16 +20,27 @@ export function download(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 export async function saveFile(blob, filename) {
+  if (!(blob instanceof Blob) || !blob.size) throw new Error('文件内容为空，未执行保存');
   if (window.showSaveFilePicker) {
+    let handle;
     try {
-      const handle = await window.showSaveFilePicker({ suggestedName: filename });
-      const writer = await handle.createWritable();
-      await writer.write(blob);
-      await writer.close();
-      return;
+      handle = await window.showSaveFilePicker({ suggestedName: filename });
     } catch (error) {
       if (error.name === 'AbortError') return;
+      if (!['SecurityError', 'NotSupportedError'].includes(error.name)) throw error;
+      download(blob, filename);
+      return;
     }
+    let writer;
+    try {
+      writer = await handle.createWritable();
+      await writer.write(blob);
+      await writer.close();
+    } catch (error) {
+      await writer?.abort().catch(() => {});
+      throw new Error(`文件保存失败：${error.message}`);
+    }
+    return; // Never start a second download after opening a save picker.
   }
   download(blob, filename);
 }
@@ -49,6 +60,7 @@ export function safeUrl(value) {
   return url.href.replace(/\/$/, '');
 }
 export function errorMessage(error) {
+  if (error.name === 'TimeoutError') return '在线服务响应超时，请稍后重试或选择其他服务。';
   if (error.name === 'AbortError') return '已停止，已生成的内容已保留';
   if (/fetch|network/i.test(error.message))
     return '网络连接失败，请检查网络及服务商的浏览器跨域（CORS）支持。';
