@@ -1,6 +1,6 @@
 # 项目结构与开发逻辑
 
-适用版本：0.1.2。入口为 `index.html` → `src/js/main.js`。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
+适用版本：0.1.3。入口为 `index.html` → `src/js/main.js`。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
 
 ## 文件树
 
@@ -40,6 +40,8 @@ pdf_translater/
 │  │  ├─ llm.js                    Chat/Responses、文件输入、SSE、原生 PDF
 │  │  ├─ markdown.js               Markdown/KaTeX/高亮/安全 HTML
 │  │  ├─ pdf.js                    PDF.js 加载、文本提取、可见页和批注交互
+│  │  ├─ pdf-text.js               同源字体、准确尺寸/旋转与字宽/基线对齐
+│  │  ├─ pdf-search.js             文本索引、字符位置映射与大小写/全字匹配
 │  │  ├─ selection-actions.js      可注册的选区动作、命中状态及局部清除规则
 │  │  ├─ shapes.js                 形状选择清单、共享 PDF 点坐标几何及画布路径
 │  │  ├─ pdf-export.js             带批注 PDF、视觉版全文译文 PDF
@@ -70,9 +72,11 @@ pdf_translater/
 │  ├─ selection-actions.test.mjs   选区规则、多类型/多页与局部清除测试
 │  ├─ save-file.test.mjs           单次保存、取消和写失败不重复下载测试
 │  ├─ shapes.test.mjs              形状几何、删除线及字号规则测试
+│  ├─ search-geometry.test.mjs     搜索过滤、跨文本片段、移动边界与命中测试
 │  └─ e2e/
 │     ├─ app.spec.js               原有合成 PDF 的真实浏览器功能回归
-│     └─ optimizations.spec.js     状态反馈、松手翻译、绘图尺寸和导航回归
+│     ├─ optimizations.spec.js     状态反馈、松手翻译、绘图尺寸和导航回归
+│     └─ reader-refinements.spec.js 字形坐标、旋转/裁切、高 DPI、拖动/历史及搜索浮窗
 ├─ dist/                           构建产物，不手工编辑
 ├─ node_modules/                   npm 依赖，不手工编辑
 ├─ .cache/                         npm 缓存、开发期官方文档，不进入发布
@@ -163,20 +167,34 @@ pdf_translater/
 - `setDrawingOptions(options)`：同步后续批注/文本框字号、手绘笔宽和形状类型；绘制开始时冻结参数，不修改已有记录。
 - `open(doc,pdf)`：取消旧渲染、切换文档和批注。
 - `layout()`：计算比例、建立页面占位、观察可见页、记录滚动页码和已布局宽度/DPR。主入口仅在尺寸或 DPR 变化时请求 fit 重排，避免延迟清空选区。
-- `renderPage(number,generation)`：只渲染临近可见页，建立画布/文字层/批注层/手绘层，防止旧文档异步回填；以 `max(DPR,2,1.5/scale)` 超采样，再应用 600 万像素预算。通过实际整数画布宽高换算 PDF render transform，文字层使用原 CSS viewport。
+- `renderPage(number,generation)`：返回或复用该页完整绘制 Promise，供可见页加载与搜索/历史精确定位等待文字层就绪。
+- `paintPage(number,generation)`：建立画布/文字/批注/搜索/手绘层，防止旧任务回填；延续原超采样与 600 万像素预算。调用 renderAlignedText 保持字体、尺寸、裁切/旋转/UserUnit 一致；加载后重绘搜索标记。
 - `goTo(page)`、`setZoom(zoom)`：页码边界、滚动和重新布局。
+- `goToLocation(page,rect)`：先等待页面就绪，再按归一化位置滚动纵/横轴并更新页码。
+- `getPageContent(number)`：按当前 PDF 缓存文本提取 Promise，切换文档清除。
+- `search(query,options,{signal,onProgress})`：逐页收集全部匹配，支持取消及页数进度；结果仅在内存，空查询清除高亮。
+- `matchRects(match)`：按 itemIndex/字符范围创建真实 DOM Range，返回匹配文字的归一化矩形。
+- `drawSearchMatches(page)` / `revealSearchMatch(match)`：绘制独立浅黄标记；点击结果定位实际文字而非只跳到页首。
 - `setTool(tool,color)`：切换鼠标命中层；文本框/手绘/橡皮擦/形状使用 Canvas 命中层，选择工具保留文字选择。
 - `captureSelection({translate=false})`：裁切 Range 与文字 span 的交集，转换归一化坐标，刷新按钮状态；仅明确 translate=true、没有按住的指针且内容未提交过时调用翻译回调。
 - `clearSelection(clearNative)`：清空选区与按下状态，按需释放浏览器选区。
 - `applySelectionAction(type,color)`：按注册规则添加或局部清除；空选区不执行，互斥防重复，完成后释放；批注输入取消不创建记录。
 - `commitAnnotationChanges(rows)`：一次 annotations 事务提交同一操作的所有页面；提交成功再更新当前文档和绘制。
 - `addAnnotation(value)`：先保存后绘制，记录当前文档撤销栈。
-- `undo(redo)`：更新 tombstone，跨文档维护独立撤销栈；该栈仅本次应用会话有效。
-- 选区动作的历史为 `{changes:[{before,after}]}`，同时恢复局部矩形变化和多页记录；笔迹/文本框的原历史格式继续兼容。
-- `editAnnotation(annotation)`：文本或便签的编辑/删除回调。
-- `drawAnnotations(page)`：从持久化状态重绘 DOM 与 Canvas；删除线位于文字中线；笔迹/形状按页面 pt 尺寸转换到画布，字号按缩放换算。
-- `bindInk(canvas,page)`：pointer capture 手绘或形状，拖动实时预览，松手保存；橡皮擦仅命中笔迹；文本框按当前字号创建。批注仍通过选区规则创建。
-- `find(query)`：从当前页循环查找文本并跳转，扫描件无文字层则不会匹配。
+- `historyState()` / `notifyHistory()`：返回当前文档 undo/redo 可用性；空栈或提交中禁用按钮。
+- `annotationLocation(annotation)`：便签/文本框取自身位置，其他标记取选区/笔迹/形状位置。
+- `undo(redo)`：提交对应 before/after 或 tombstone，然后定位操作页及位置。失败恢复栈；历史仍仅本次会话有效。
+- 选区动作历史为 `{changes:[{before,after}],location?}`，保留局部清除真实位置；拖动和编辑使用 before/after，兼容原笔迹创建的历史格式。
+- `editAnnotation(annotation)`：文本或便签编辑/删除回调，纳入历史。
+- `startAnnotationDrag(event,page)`：命中便签/文本框/形状后由页面捕获指针；3px 内仍视为点击编辑，超过阈值预览位移，松手事务提交、取消恢复。`cancelAnnotationDrag` 清理手势、监听和捕获。
+- `drawAnnotations(page)`：重绘标记和带 touch-action 的透明形状命中区域；字体/笔宽继续按已有数据绘制。
+- `bindInk(canvas,page)`：原手绘/形状创建保留；橡皮擦按笔迹线段或形状几何命中并删除整个对象，纳入历史。
+
+### pdf-text.js / pdf-search.js
+
+- `renderAlignedText(page,content,container,viewport)`：从 PDF.js 已加载字体取得同源字体/字重/斜体，统一文档语言；保留官方 TextLayer 并校正实际 DOM 字宽、精确位置和基线，显式设置未旋转页面尺寸并应用旋转 CSS。返回文字段与 itemIndex→span 映射供搜索定位。
+- `indexPageText(items)`：生成搜索字符串与每个原始文本片段的范围；换行和有间距片段间插空白，保留字符索引映射。
+- `findPageMatches(index,query,{caseSensitive,wholeWord})`：转义查询中的正则字符，支持空白跨片段、大小写及 Unicode 词边界，返回全部匹配范围、parts 和单行摘要。
 
 ### selection-actions.js
 
@@ -195,6 +213,9 @@ pdf_translater/
 - `SHAPES`：rectangle/circle/line/arrow 的值、下载图标名、中文标签映射。
 - `shapeGeometry(annotation,width,height)`：将归一化 start/end 转为 PDF pt；矩形允许反向拖动，圆形按短边保持正圆，箭头返回主线和两条箭头边。
 - `drawShape(context,annotation,width,height)`：绘制 Canvas 路径；PDF 导出复用 shapeGeometry 生成矢量指令，保持几何一致。
+- `distanceToSegment(point,start,end)`：命中笔迹/线形状，覆盖采样点之间的笔段。
+- `hitShape(annotation,point,width,height,tolerance)`：矩形/圆内及直线/箭头附近命中，供拖动与橡皮擦复用。
+- `translateAnnotation(annotation,dx,dy,box)`：在页面边界内平移自身坐标；便签原文 rects 锚点保留，形状尺寸不变。
 
 ### archive.js
 
@@ -251,6 +272,7 @@ pdf_translater/
 | saveWorkspace | 保存标签、活动 PDF 和每个文档活动对话 |
 | renderTabs / renderToolbar / toolButton | 单行文件卡片、指定顺序的工具条、颜色和激活反馈 |
 | updateToolButtons | 依据选区规则同步多个按钮按下状态，不重建工具栏或打断选区 |
+| updateHistoryButtons | 根据阅读器历史状态同步撤销/重做按钮禁用状态 |
 | setTool / colorPicker / saveToolOptions | 选区动作或持续工具分发，颜色/形状与 pt 滑块浮层，保存后续工具偏好 |
 | changeZoom / setPage | 比例、跳页和延迟保存滚动位置 |
 | showReader / showSecondary | 工作区与管理页之间切换 |
@@ -262,21 +284,24 @@ pdf_translater/
 
 ### ui/pdf-navigation.js 的 PdfNavigation
 
-- `constructor(root,{navigate,onMode,error})`：模式为 thumbnails/bookmarks/关闭，绑定主入口回调。
+- `constructor(root,{navigate,onMode,error,search,navigateMatch})`：模式为 bookmarks/thumbnails/search/关闭，持有当前文档搜索条件及临时结果。
 - `stopRendering()`：增加世代号、断开观察器、取消临时缩略图任务。
-- `setDocument(pdf)`：切换来源并清理旧任务；无文档时关闭导航、恢复功能侧栏。
-- `toggle(mode)`：互斥模式，重复点击当前模式关闭并释放内容，触发宽度重算。
+- `setDocument(pdf)`：切换来源、取消旧搜索并清空旧结果；无文档关闭导航。
+- `toggle(mode)` / `setMode(mode)` / `close()`：工具按钮切换、顶部页签直达模式或关闭。桌面触发布局调整，窄屏保持渲染宽度。
 - `render()`：缩略图模式建立每页按钮并观察可见项；书签读取目录树按深度缩进，getDestination 解析命名目标，getPageIndex 解析页面引用。
 - `renderThumbnail(button,pdf,generation)`：约 150 CSS px 宽、1.5 倍像素渲染，生成本地 JPEG 后释放临时 Canvas；世代号阻止旧文档回填。
 - `setPage(page)`：同步高亮与 aria-current，不写入其他用户数据。
+- `renderSearch(content)`：输入、查找按钮、两个自绘筛选开关、进度和结果容器。
+- `startSearch()`：冻结本次条件并取消上次任务，调用阅读器全页扫描，阻止切换 PDF 后旧结果回填。
+- `updateSearchResults()`：工作中显示环形进度；完成后每条结果一行，点击调用 navigateMatch。关闭导航或切换页签保留当前 PDF 的完成结果，切换 PDF 清除。
 
 ### 独立布局交互
 
 `initDesktopLayout()` 只在桌面启用分隔条 pointer/键盘交互，更新 `--reader-share`。
 
-`initMobileLayout()` 管理移动视口高度与分屏状态；选词后保留阅读页供选区操作，不强制切到翻译；`setMobilePane(pane)` 由底部按钮切换阅读/助手，同时退出管理页，不改桌面列宽。
+`initMobileLayout({closeNavigation})` 管理视口高度、分屏状态和窄屏浮窗外点击关闭；底部功能导航保持。`setMobilePane(pane)` 切换阅读/助手，同时退出管理页，不改桌面列宽。
 
-`data-pdf-nav` 存在且阅读视图可见时，桌面网格收窄功能侧栏并在阅读栏前插入导航列；手机阅读态显示窄图标侧栏和导航列，助手页仍单栏。开关导航触发 `reader-resize`，fit 页面重排；固定缩放不强制变化。
+`data-pdf-nav` 存在时，桌面仍收窄功能侧栏并插入导航列；窄屏使用绝对定位浮窗，不显示左功能栏，不改变 PDF 宽度或 fit 比例。桌面查找列稍宽以容纳同一行筛选开关。
 
 ## DOM 页面功能映射
 
@@ -288,8 +313,12 @@ pdf_translater/
 | #document-tabs / .document-tab | 已打开 PDF 的单行卡片、关闭和激活；页码保留在工具栏 | App.renderTabs |
 | #pdf-input | 隐藏本地多文件选择器 | App.importFiles |
 | #pdf-toolbar / [data-select=zoom] / #page-input | 阅读缩放、导航、编辑工具、颜色指示和导出 | App.renderToolbar |
-| [data-action=thumbnails] / [data-action=bookmarks] / #pdf-navigation | 单列缩略图或内置书签；控制功能侧栏收窄 | PdfNavigation / App |
+| [data-action=thumbnails] / [data-action=bookmarks] / [data-action=search-pdf] / #pdf-navigation | 统一导航入口；桌面分栏或移动浮窗 | PdfNavigation / App |
 | .pdf-thumbnail / .pdf-bookmark | 缩略图跳页、显式/命名书签跳页 | PdfNavigation |
+| .pdf-navigation-tabs / .navigation-search-form / .search-filters | 三模式页签、搜索输入/按钮、大小写与全字开关 | PdfNavigation |
+| .navigation-search-status / .search-result / .search-highlights | 环形进度、单行全部结果、独立浅黄色文本高亮 | PdfNavigation / PdfViewer |
+| [data-annotation-id] / .annotation-shape-handle | 批注/文本框/形状拖动命中区 | PdfViewer |
+| [data-action=undo] / [data-action=redo] | 有效历史操作与自动位置跳转，无历史禁用 | App / PdfViewer |
 | [data-action=tool-strike] / [data-action=tool-shape] | 选中文字删除线 / 拖动绘制形状 | selection-actions / PdfViewer |
 | #pdf-scroll / .pdf-page | 滚动阅读、页面占位与画布 | PdfViewer |
 | .textLayer / .annotations / .ink-layer | 真正可选文字、标注和手绘命中层 | PdfViewer |

@@ -2,11 +2,21 @@ import { icon, iconButton } from './components.js';
 import { esc } from '../utils.js';
 
 export class PdfNavigation {
-  constructor(root, { navigate, onMode, error }) {
+  constructor(root, { navigate, onMode, error, search, navigateMatch }) {
     this.root = root;
     this.navigate = navigate;
     this.onMode = onMode;
     this.error = error;
+    this.search = search;
+    this.navigateMatch = navigateMatch;
+    this.searchState = {
+      query: '',
+      caseSensitive: false,
+      wholeWord: false,
+      results: [],
+      status: 'idle',
+      progress: '',
+    };
     this.mode = '';
     this.generation = 0;
     this.tasks = new Set();
@@ -18,6 +28,15 @@ export class PdfNavigation {
     this.tasks.clear();
   }
   setDocument(pdf) {
+    this.searchController?.abort();
+    this.searchState = {
+      query: '',
+      caseSensitive: false,
+      wholeWord: false,
+      results: [],
+      status: 'idle',
+      progress: '',
+    };
     this.stopRendering();
     this.pdf = pdf;
     if (!pdf) {
@@ -29,7 +48,14 @@ export class PdfNavigation {
   }
   toggle(mode) {
     if (!this.pdf) return;
-    this.mode = this.mode === mode ? '' : mode;
+    this.setMode(this.mode === mode ? '' : mode);
+  }
+  close() {
+    this.setMode('');
+  }
+  setMode(mode) {
+    if (!this.pdf && mode) return;
+    this.mode = mode;
     this.stopRendering();
     this.root.hidden = !this.mode;
     if (!this.mode) this.root.replaceChildren();
@@ -39,9 +65,27 @@ export class PdfNavigation {
   async render() {
     const generation = ++this.generation,
       pdf = this.pdf;
-    this.root.innerHTML = `<header class="pdf-navigation-header"><strong>${this.mode === 'thumbnails' ? '缩略图' : '书签'}</strong>${iconButton('close-navigation', 'x', '关闭 PDF 导航')}</header><div class="pdf-navigation-content"></div>`;
-    this.root.querySelector('button').onclick = () => this.toggle(this.mode);
+    this.root.innerHTML = `<header class="pdf-navigation-header"><div class="pdf-navigation-tabs" role="tablist" aria-label="PDF 导航模式">${[
+      ['bookmarks', '书签'],
+      ['thumbnails', '缩略图'],
+      ['search', '查找'],
+    ]
+      .map(
+        ([mode, label]) =>
+          `<button role="tab" data-nav-mode="${mode}" aria-selected="${mode === this.mode}" class="${mode === this.mode ? 'active' : ''}">${label}</button>`,
+      )
+      .join(
+        '',
+      )}</div>${iconButton('close-navigation', 'x', '关闭 PDF 导航')}</header><div class="pdf-navigation-content"></div>`;
+    this.root.querySelector('[data-action="close-navigation"]').onclick = () => this.close();
+    this.root
+      .querySelectorAll('[data-nav-mode]')
+      .forEach((button) => (button.onclick = () => this.setMode(button.dataset.navMode)));
     const content = this.root.querySelector('.pdf-navigation-content');
+    if (this.mode === 'search') {
+      this.renderSearch(content);
+      return;
+    }
     if (this.mode === 'thumbnails') {
       for (let number = 1; number <= pdf.numPages; number++) {
         const button = document.createElement('button');
@@ -110,6 +154,90 @@ export class PdfNavigation {
         }
       };
       append(outline, 0);
+    }
+  }
+  renderSearch(content) {
+    const state = this.searchState;
+    content.innerHTML = `<form class="navigation-search-form"><input type="text" aria-label="查找文本" placeholder="查找文字" value="${esc(state.query)}">${iconButton('run-pdf-search', 'search', '查找')}</form><div class="search-filters"><label class="toggle-row"><span>区分大小写</span><input type="checkbox" name="caseSensitive" ${state.caseSensitive ? 'checked' : ''}><span class="switch"></span></label><label class="toggle-row"><span>全字匹配</span><input type="checkbox" name="wholeWord" ${state.wholeWord ? 'checked' : ''}><span class="switch"></span></label></div><div class="navigation-search-status" role="status"></div><div class="search-results"></div>`;
+    content.querySelector('input[type=text]').oninput = (event) => (state.query = event.target.value);
+    content
+      .querySelectorAll('input[type=checkbox]')
+      .forEach((input) => (input.onchange = () => (state[input.name] = input.checked)));
+    content.querySelector('form').onsubmit = (event) => {
+      event.preventDefault();
+      this.startSearch();
+    };
+    content.querySelector('[data-action="run-pdf-search"]').onclick = () => this.startSearch();
+    this.updateSearchResults();
+  }
+  updateSearchResults() {
+    if (this.mode !== 'search') return;
+    const status = this.root.querySelector('.navigation-search-status');
+    if (!status) return;
+    const state = this.searchState;
+    status.innerHTML =
+      state.status === 'searching'
+        ? `<span class="spinner small"></span><span>正在查找 ${esc(state.progress)}</span>`
+        : state.error
+          ? esc(state.error)
+          : state.status === 'complete'
+            ? `找到 ${state.results.length} 处匹配`
+            : '输入文字后开始查找';
+    const list = this.root.querySelector('.search-results');
+    list.replaceChildren();
+    if (state.status !== 'complete') return;
+    for (const result of state.results) {
+      const button = document.createElement('button');
+      button.className = 'search-result';
+      button.dataset.matchId = result.id;
+      button.title = `第 ${result.page} 页 · ${result.snippet}`;
+      button.innerHTML = `<span class="search-page">${result.page}</span><span>${esc(result.snippet)}</span>`;
+      button.onclick = () => this.navigateMatch(result).catch(this.error);
+      list.append(button);
+    }
+  }
+  async startSearch() {
+    const state = this.searchState;
+    if (!state.query.trim()) {
+      this.searchController?.abort();
+      state.results = [];
+      state.status = 'idle';
+      state.error = '';
+      await this.search('');
+      this.updateSearchResults();
+      return;
+    }
+    this.searchController?.abort();
+    const controller = (this.searchController = new AbortController());
+    const pdf = this.pdf;
+    state.status = 'searching';
+    state.results = [];
+    state.error = '';
+    state.progress = '';
+    this.updateSearchResults();
+    try {
+      const results = await this.search(
+        state.query,
+        { caseSensitive: state.caseSensitive, wholeWord: state.wholeWord },
+        {
+          signal: controller.signal,
+          onProgress: (page, total) => {
+            if (this.pdf === pdf && this.searchController === controller) {
+              state.progress = `${page} / ${total}`;
+              this.updateSearchResults();
+            }
+          },
+        },
+      );
+      if (this.pdf !== pdf || this.searchController !== controller) return;
+      state.results = results;
+      state.status = 'complete';
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      state.status = 'error';
+      state.error = error.message;
+    } finally {
+      if (this.pdf === pdf && this.searchController === controller) this.updateSearchResults();
     }
   }
   async renderThumbnail(button, pdf, generation) {

@@ -102,10 +102,9 @@
   }
   :root[data-pdf-nav][data-view='reader'] .workspace {
     --navigation-width: clamp(10rem, 13vw, 14rem);
-    grid-template-columns: var(--navigation-width) minmax(
-        0,
-        calc(var(--reader-share) - var(--navigation-width))
-      ) 0.65rem minmax(0, 1fr);
+    grid-template-columns:
+      var(--navigation-width) minmax(0, calc(var(--reader-share) - var(--navigation-width)))
+      0.65rem minmax(0, 1fr);
   }
   :root[data-pdf-nav][data-view='reader'] .sidebar {
     padding: 0.8rem 0.35rem;
@@ -123,6 +122,9 @@
   :root[data-pdf-nav][data-view='reader'] .sidebar .nav-item .icon {
     width: 1.35rem;
     height: 1.35rem;
+  }
+  :root[data-pdf-nav='search'][data-view='reader'] .workspace {
+    --navigation-width: clamp(12rem, 15vw, 16rem);
   }
 }
 @media (min-width: 961px) and (max-width: 1450px) {

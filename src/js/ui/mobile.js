@@ -1,4 +1,4 @@
-export function initMobileLayout() {
+export function initMobileLayout({ closeNavigation = () => {} } = {}) {
   const media = matchMedia('(max-width: 960px)');
   const update = () => {
     document.documentElement.classList.toggle('mobile-layout', media.matches);
@@ -7,6 +7,22 @@ export function initMobileLayout() {
   };
   media.addEventListener('change', update);
   update();
+  document.addEventListener(
+    'pointerdown',
+    (event) => {
+      if (!media.matches || !document.documentElement.dataset.pdfNav) return;
+      if (
+        event.target.closest(
+          '#pdf-navigation,[data-action="thumbnails"],[data-action="bookmarks"],[data-action="search-pdf"]',
+        )
+      )
+        return;
+      closeNavigation();
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    true,
+  );
   document
     .querySelectorAll('[data-mobile-pane]')
     .forEach((button) => button.addEventListener('click', () => setMobilePane(button.dataset.mobilePane)));

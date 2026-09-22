@@ -51,3 +51,47 @@ export function drawShape(context, annotation, width, height) {
     }
   context.stroke();
 }
+export function distanceToSegment(point, start, end) {
+  const dx = end.x - start.x,
+    dy = end.y - start.y,
+    denom = dx * dx + dy * dy;
+  const t = denom
+    ? Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / denom))
+    : 0;
+  return Math.hypot(point.x - start.x - t * dx, point.y - start.y - t * dy);
+}
+export function hitShape(annotation, point, width, height, tolerance = 8) {
+  const geometry = shapeGeometry(annotation, width, height),
+    p = { x: point.x * width, y: point.y * height };
+  if (geometry.type === 'rectangle')
+    return (
+      p.x >= geometry.x - tolerance &&
+      p.x <= geometry.x + geometry.width + tolerance &&
+      p.y >= geometry.y - tolerance &&
+      p.y <= geometry.y + geometry.height + tolerance
+    );
+  if (geometry.type === 'circle')
+    return Math.hypot(p.x - geometry.x, p.y - geometry.y) <= geometry.radius + tolerance;
+  return geometry.segments.some(([start, end]) => distanceToSegment(p, start, end) <= tolerance);
+}
+export function translateAnnotation(annotation, dx, dy, box = { w: 0, h: 0 }) {
+  const before = structuredClone(annotation);
+  const xs =
+    annotation.type === 'shape'
+      ? [annotation.start.x, annotation.end.x]
+      : [annotation.x, annotation.x + box.w];
+  const ys =
+    annotation.type === 'shape'
+      ? [annotation.start.y, annotation.end.y]
+      : [annotation.y, annotation.y + box.h];
+  dx = Math.min(1 - Math.max(...xs), Math.max(-Math.min(...xs), dx));
+  dy = Math.min(1 - Math.max(...ys), Math.max(-Math.min(...ys), dy));
+  if (annotation.type === 'shape') {
+    before.start = { x: annotation.start.x + dx, y: annotation.start.y + dy };
+    before.end = { x: annotation.end.x + dx, y: annotation.end.y + dy };
+  } else {
+    before.x += dx;
+    before.y += dy;
+  }
+  return before;
+}

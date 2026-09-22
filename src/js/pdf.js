@@ -3,7 +3,9 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { all, put, patch, get, database } from './storage.js';
 import { uid } from './utils.js';
 import { planSelectionAction, selectionActionState } from './selection-actions.js';
-import { drawShape } from './shapes.js';
+import { drawShape, shapeGeometry, hitShape, translateAnnotation, distanceToSegment } from './shapes.js';
+import { renderAlignedText } from './pdf-text.js';
+import { indexPageText, findPageMatches } from './pdf-search.js';
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 const base = import.meta.env.BASE_URL;
 export async function loadPdf(blob, onPassword) {
@@ -66,6 +68,9 @@ export class PdfViewer {
     this.history = new Map();
     this.future = new Map();
     this.scale = 1;
+    this.textLayers = new Map();
+    this.pageContents = new Map();
+    this.searchMatches = new Map();
     this.drawingOptions = { noteSize: 12, textSize: 14, penWidth: 2, shape: 'rectangle' };
     this.pointers = new Set();
     this.selectionPointers = new Set();
@@ -158,7 +163,7 @@ export class PdfViewer {
   }
   queueSelectionTranslation(delay = 0) {
     clearTimeout(this.releaseTimer);
-    if (this.pointers.size || this.touchCount) return;
+    if (this.pointers.size || this.touchCount || this.annotationDrag) return;
     if (delay) this.releaseTimer = setTimeout(() => this.captureSelection({ translate: true }), delay);
     else this.captureSelection({ translate: true });
   }
@@ -166,11 +171,15 @@ export class PdfViewer {
     this.drawingOptions = { ...this.drawingOptions, ...options };
   }
   async open(doc, pdf) {
+    this.cancelAnnotationDrag?.();
     this.generation++;
     this.observer?.disconnect();
     for (const task of this.tasks.values()) task.cancel();
     this.tasks.clear();
     this.rendered.clear();
+    this.textLayers.clear();
+    this.pageContents.clear();
+    this.searchMatches.clear();
     this.container.replaceChildren();
     this.selection = null;
     this.callbacks.selectionState?.({});
@@ -180,14 +189,17 @@ export class PdfViewer {
     this.zoom = doc.zoom || 'fit';
     this.annotations = (await all('annotations')).filter((a) => a.documentId === doc.id);
     await this.layout();
+    this.notifyHistory();
   }
   async layout() {
+    this.cancelAnnotationDrag?.();
     this.clearSelection();
     const generation = ++this.generation;
     this.observer?.disconnect();
     for (const task of this.tasks.values()) task.cancel();
     this.tasks.clear();
     this.rendered.clear();
+    this.textLayers.clear();
     const first = await this.pdf.getPage(1);
     if (generation !== this.generation) return;
     const vp = first.getViewport({ scale: 1 });
@@ -217,6 +229,7 @@ export class PdfViewer {
             this.tasks.get(number)?.cancel();
             entry.target.replaceChildren();
             this.rendered.delete(number);
+            this.textLayers.delete(number);
           }
         }
       },
@@ -240,11 +253,16 @@ export class PdfViewer {
     this.goTo(this.page);
     this.setTool(this.tool, this.color);
   }
-  async renderPage(number, generation) {
-    if (this.rendered.has(number) || generation !== this.generation) return;
+  renderPage(number, generation = this.generation) {
+    if (generation !== this.generation) return Promise.resolve();
+    if (this.rendered.has(number)) return this.rendered.get(number);
+    const pending = this.paintPage(number, generation);
+    this.rendered.set(number, pending);
+    return pending;
+  }
+  async paintPage(number, generation) {
     const shell = this.container.querySelector(`[data-page="${number}"]`);
     if (!shell) return;
-    this.rendered.set(number, true);
     const page = await this.pdf.getPage(number);
     if (generation !== this.generation) return;
     const viewport = page.getViewport({ scale: this.scale });
@@ -265,11 +283,13 @@ export class PdfViewer {
     text.className = 'textLayer';
     const annotations = document.createElement('div');
     annotations.className = 'annotations';
+    const search = document.createElement('div');
+    search.className = 'search-highlights';
     const ink = document.createElement('canvas');
     ink.className = 'ink-layer';
     ink.width = canvas.width;
     ink.height = canvas.height;
-    shell.replaceChildren(canvas, annotations, text, ink);
+    shell.replaceChildren(canvas, annotations, search, text, ink);
     const task = page.render({
       canvasContext: canvas.getContext('2d'),
       viewport,
@@ -282,16 +302,17 @@ export class PdfViewer {
       if (error.name !== 'RenderingCancelledException') throw error;
       return;
     } finally {
-      this.tasks.delete(number);
+      if (this.tasks.get(number) === task) this.tasks.delete(number);
     }
-    if (generation !== this.generation || !shell.isConnected) return;
-    await new pdfjs.TextLayer({
-      textContentSource: await page.getTextContent(),
-      container: text,
-      viewport,
-    }).render();
+    if (generation !== this.generation || !canvas.isConnected) return;
+    const content = await this.getPageContent(number);
+    const layer = await renderAlignedText(page, content, text, viewport);
+    if (generation !== this.generation || !canvas.isConnected) return;
+    this.textLayers.set(number, layer);
+    this.drawSearchMatches(number);
     this.drawAnnotations(number);
     this.bindInk(ink, number);
+    shell.onpointerdown = (event) => this.startAnnotationDrag(event, number);
     this.setTool(this.tool, this.color);
   }
   goTo(page) {
@@ -303,6 +324,99 @@ export class PdfViewer {
   async setZoom(zoom) {
     this.zoom = zoom;
     await this.layout();
+  }
+  getPageContent(number) {
+    if (!this.pageContents.has(number))
+      this.pageContents.set(
+        number,
+        this.pdf.getPage(number).then((page) => page.getTextContent()),
+      );
+    return this.pageContents.get(number);
+  }
+  async search(query, options = {}, { signal, onProgress = () => {} } = {}) {
+    const pdf = this.pdf;
+    this.searchMatches.clear();
+    for (const page of this.textLayers.keys()) this.drawSearchMatches(page);
+    const results = [];
+    if (!query.trim()) return results;
+    for (let number = 1; number <= pdf.numPages; number++) {
+      signal?.throwIfAborted();
+      if (this.pdf !== pdf) throw new DOMException('文档已切换', 'AbortError');
+      const content = await this.getPageContent(number);
+      signal?.throwIfAborted();
+      const matches = findPageMatches(indexPageText(content.items), query, options).map((match, index) => ({
+        ...match,
+        page: number,
+        id: `${number}-${index}`,
+      }));
+      this.searchMatches.set(number, matches);
+      results.push(...matches);
+      this.drawSearchMatches(number);
+      onProgress(number, pdf.numPages, results.length);
+    }
+    return results;
+  }
+  matchRects(match) {
+    const layer = this.textLayers.get(match.page),
+      shell = this.container.querySelector(`[data-page="${match.page}"]`);
+    if (!layer || !shell) return [];
+    const bounds = shell.getBoundingClientRect();
+    return match.parts.flatMap((part) => {
+      const span = layer.byItem.get(part.itemIndex);
+      if (!span?.firstChild) return [];
+      const range = document.createRange();
+      range.setStart(span.firstChild, Math.min(part.start, span.textContent.length));
+      range.setEnd(span.firstChild, Math.min(part.end, span.textContent.length));
+      return [...range.getClientRects()]
+        .filter((r) => r.width && r.height)
+        .map((r) => ({
+          x: (r.left - bounds.left) / bounds.width,
+          y: (r.top - bounds.top) / bounds.height,
+          w: r.width / bounds.width,
+          h: r.height / bounds.height,
+        }));
+    });
+  }
+  drawSearchMatches(page) {
+    const layer = this.container.querySelector(`[data-page="${page}"] .search-highlights`);
+    if (!layer) return;
+    layer.replaceChildren();
+    for (const match of this.searchMatches.get(page) || [])
+      for (const rect of this.matchRects(match)) {
+        const mark = document.createElement('span');
+        mark.className = 'search-hit';
+        mark.dataset.matchId = match.id;
+        Object.assign(mark.style, {
+          left: `${rect.x * 100}%`,
+          top: `${rect.y * 100}%`,
+          width: `${rect.w * 100}%`,
+          height: `${rect.h * 100}%`,
+        });
+        layer.append(mark);
+      }
+  }
+  async revealSearchMatch(match) {
+    await this.renderPage(match.page);
+    const rect = this.matchRects(match)[0];
+    if (rect) await this.goToLocation(match.page, rect);
+    else this.goTo(match.page);
+  }
+  async goToLocation(page, rect) {
+    const generation = this.generation;
+    await this.renderPage(page);
+    if (generation !== this.generation) return;
+    const shell = this.container.querySelector(`[data-page="${page}"]`);
+    if (!shell) return;
+    this.container.scrollTop = Math.max(
+      0,
+      shell.offsetTop + (rect?.y || 0) * shell.clientHeight - this.container.clientHeight * 0.25,
+    );
+    this.container.scrollLeft = Math.max(
+      0,
+      shell.offsetLeft + (rect?.x || 0) * shell.clientWidth - this.container.clientWidth * 0.35,
+    );
+    this.page = page;
+    this.callbacks.page(page);
   }
   setTool(tool, color) {
     this.tool = tool;
@@ -415,8 +529,12 @@ export class PdfViewer {
         };
       }
       await this.commitAnnotationChanges(changes.map((c) => c.after));
-      this.history.set(documentId, [...(this.history.get(documentId) || []), { changes }]);
+      this.history.set(documentId, [
+        ...(this.history.get(documentId) || []),
+        { changes, location: selection.rects[0] },
+      ]);
       this.future.set(documentId, []);
+      this.notifyHistory();
       this.clearSelection();
       this.callbacks.saved();
       return true;
@@ -455,44 +573,171 @@ export class PdfViewer {
       this.drawAnnotations(row.page);
     }
     this.callbacks.saved();
+    this.notifyHistory();
     return row;
   }
+  historyState() {
+    return {
+      undo: !this.historyBusy && Boolean(this.history.get(this.doc?.id)?.length),
+      redo: !this.historyBusy && Boolean(this.future.get(this.doc?.id)?.length),
+    };
+  }
+  notifyHistory() {
+    this.callbacks.historyState?.(this.historyState());
+  }
+  annotationLocation(annotation) {
+    const point = ['note', 'text'].includes(annotation.type)
+      ? annotation
+      : annotation.rects?.[0] || annotation.points?.[0] || annotation.start || annotation;
+    return { page: annotation.page, x: point.x || 0, y: point.y || 0 };
+  }
   async undo(redo = false) {
+    if (this.historyBusy || !this.doc) return;
+    this.cancelAnnotationDrag?.();
     const from = redo ? this.future : this.history;
     const to = redo ? this.history : this.future;
     const id = this.doc.id;
     const stack = from.get(id) || [];
     const action = stack.pop();
     if (!action) return;
-    if (action.changes) {
-      try {
+    this.historyBusy = true;
+    this.notifyHistory();
+    try {
+      let focused;
+      if (action.changes) {
         await this.commitAnnotationChanges(
           action.changes.map((change) =>
             redo ? change.after : change.before || { ...change.after, deleted: true },
           ),
         );
-      } catch (error) {
-        stack.push(action);
-        throw error;
+        const change = action.changes[0];
+        focused = redo ? change.after : change.before || change.after;
+      } else {
+        focused = await patch('annotations', action.id, { deleted: redo ? action.after : action.before });
+        if (this.doc.id === id) {
+          this.annotations = this.annotations.map((a) => (a.id === focused.id ? focused : a));
+          this.drawAnnotations(focused.page);
+        }
       }
       to.set(id, [...(to.get(id) || []), action]);
-      this.callbacks.selectionState?.(selectionActionState(this.annotations, this.selection));
+      if (this.doc.id === id) {
+        this.callbacks.selectionState?.(selectionActionState(this.annotations, this.selection));
+        const location = action.location || this.annotationLocation(focused);
+        await this.goToLocation(location.page, location);
+      }
       this.callbacks.saved();
-      return;
+    } catch (error) {
+      if (!(to.get(id) || []).includes(action)) stack.push(action);
+      throw error;
+    } finally {
+      this.historyBusy = false;
+      this.notifyHistory();
     }
-    const row = await patch('annotations', action.id, { deleted: redo ? action.after : action.before });
-    to.set(id, [...(to.get(id) || []), action]);
-    this.annotations = this.annotations.map((a) => (a.id === row.id ? row : a));
-    this.drawAnnotations(row.page);
-    this.callbacks.saved();
   }
   async editAnnotation(annotation) {
     const result = await this.callbacks.editAnnotation(annotation);
     if (!result) return;
     const row = await patch('annotations', annotation.id, result);
+    this.history.set(annotation.documentId, [
+      ...(this.history.get(annotation.documentId) || []),
+      { changes: [{ before: structuredClone(annotation), after: row }] },
+    ]);
+    this.future.set(annotation.documentId, []);
+    this.notifyHistory();
     this.annotations = this.annotations.map((a) => (a.id === row.id ? row : a));
     this.drawAnnotations(row.page);
     this.callbacks.saved();
+  }
+  startAnnotationDrag(event, page) {
+    if (event.button !== 0 || this.annotationDrag || this.tool === 'eraser') return;
+    const shell = this.container.querySelector(`[data-page="${page}"]`);
+    if (!shell) return;
+    const bounds = shell.getBoundingClientRect(),
+      point = {
+        x: (event.clientX - bounds.left) / bounds.width,
+        y: (event.clientY - bounds.top) / bounds.height,
+      };
+    const element = event.target.closest('[data-annotation-id]');
+    const annotation = element
+      ? this.annotations.find((a) => a.id === element.dataset.annotationId && !a.deleted)
+      : this.tool === 'select'
+        ? this.annotations
+            .filter((a) => a.page === page && a.type === 'shape' && !a.deleted)
+            .reverse()
+            .find((a) =>
+              hitShape(
+                a,
+                point,
+                Number(shell.dataset.baseWidth),
+                Number(shell.dataset.baseHeight),
+                8 / this.scale,
+              ),
+            )
+        : null;
+    if (!annotation) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.clearSelection();
+    const before = structuredClone(annotation),
+      start = { x: event.clientX, y: event.clientY };
+    const elementBounds = element?.getBoundingClientRect();
+    const box = {
+      w: (elementBounds?.width || 0) / bounds.width,
+      h: (elementBounds?.height || 0) / bounds.height,
+    };
+    const drag = (this.annotationDrag = { before, after: before, moved: false });
+    shell.setPointerCapture(event.pointerId);
+    shell.classList.add('annotation-dragging');
+    const cleanup = () => {
+      shell.removeEventListener('pointermove', move);
+      shell.removeEventListener('pointerup', end);
+      shell.removeEventListener('pointercancel', cancel);
+      shell.classList.remove('annotation-dragging');
+      if (shell.hasPointerCapture(event.pointerId)) shell.releasePointerCapture(event.pointerId);
+      this.annotationDrag = null;
+      this.cancelAnnotationDrag = null;
+    };
+    const move = (e) => {
+      if (e.pointerId !== event.pointerId) return;
+      const dx = e.clientX - start.x,
+        dy = e.clientY - start.y;
+      if (!drag.moved && Math.hypot(dx, dy) < 3) return;
+      drag.moved = true;
+      drag.after = translateAnnotation(before, dx / bounds.width, dy / bounds.height, box);
+      this.annotations = this.annotations.map((a) => (a.id === before.id ? drag.after : a));
+      this.drawAnnotations(page);
+    };
+    const cancel = () => {
+      cleanup();
+      this.annotations = this.annotations.map((a) => (a.id === before.id ? before : a));
+      this.drawAnnotations(page);
+    };
+    const end = async (e) => {
+      if (e.pointerId !== event.pointerId) return;
+      cleanup();
+      if (!drag.moved) {
+        if (before.type !== 'shape') this.editAnnotation(before).catch(this.callbacks.error);
+        return;
+      }
+      try {
+        await this.commitAnnotationChanges([drag.after]);
+        this.history.set(before.documentId, [
+          ...(this.history.get(before.documentId) || []),
+          { changes: [{ before, after: drag.after }] },
+        ]);
+        this.future.set(before.documentId, []);
+        this.notifyHistory();
+        this.callbacks.saved();
+      } catch (error) {
+        this.annotations = this.annotations.map((a) => (a.id === before.id ? before : a));
+        this.drawAnnotations(page);
+        this.callbacks.error(error);
+      }
+    };
+    this.cancelAnnotationDrag = cancel;
+    shell.addEventListener('pointermove', move);
+    shell.addEventListener('pointerup', end);
+    shell.addEventListener('pointercancel', cancel);
   }
   drawAnnotations(pageNumber) {
     const shell = this.container.querySelector(`[data-page="${pageNumber}"]`);
@@ -521,6 +766,45 @@ export class PdfViewer {
           ctx.stroke();
         }
         ctx.restore();
+        if (annotation.type === 'shape') {
+          const geometry = shapeGeometry(annotation, width, height);
+          const handle = (x, y, w, h, angle = 0, round = false) => {
+            const element = document.createElement('button');
+            element.className = 'annotation-shape-handle';
+            element.dataset.annotationId = annotation.id;
+            element.setAttribute('aria-label', '拖动形状');
+            Object.assign(element.style, {
+              left: `${(x / width) * 100}%`,
+              top: `${(y / height) * 100}%`,
+              width: `${(w / width) * 100}%`,
+              height: `${(h / height) * 100}%`,
+              transform: `rotate(${angle}rad)`,
+              borderRadius: round ? '50%' : '0',
+            });
+            layer.append(element);
+          };
+          if (geometry.type === 'rectangle') handle(geometry.x, geometry.y, geometry.width, geometry.height);
+          else if (geometry.type === 'circle')
+            handle(
+              geometry.x - geometry.radius,
+              geometry.y - geometry.radius,
+              geometry.radius * 2,
+              geometry.radius * 2,
+              0,
+              true,
+            );
+          else {
+            const thickness = Math.max(annotation.strokeWidth || 2, 12 / this.scale);
+            for (const [start, end] of geometry.segments)
+              handle(
+                start.x,
+                start.y - thickness / 2,
+                Math.hypot(end.x - start.x, end.y - start.y),
+                thickness,
+                Math.atan2(end.y - start.y, end.x - start.x),
+              );
+          }
+        }
       } else if (['highlight', 'underline', 'strike'].includes(annotation.type)) {
         for (const rect of annotation.rects) {
           const element = document.createElement('span');
@@ -537,6 +821,7 @@ export class PdfViewer {
       } else {
         const element = document.createElement('button');
         element.className = `annotation-${annotation.type}`;
+        element.dataset.annotationId = annotation.id;
         element.textContent = annotation.text;
         element.title = '点击编辑批注';
         element.style.left = `${annotation.x * 100}%`;
@@ -544,7 +829,9 @@ export class PdfViewer {
         element.style.setProperty('--annotation-color', annotation.color);
         if (annotation.type === 'text' || annotation.fontSize)
           element.style.fontSize = `${(annotation.fontSize || 14) * this.scale}px`;
-        element.onclick = () => this.editAnnotation(annotation).catch(this.callbacks.error);
+        element.onclick = (event) => {
+          if (event.detail === 0) this.editAnnotation(annotation).catch(this.callbacks.error);
+        };
         layer.append(element);
       }
     }
@@ -578,13 +865,28 @@ export class PdfViewer {
         event.preventDefault();
       } else if (tool === 'eraser') {
         const hit = this.annotations
-          .filter((a) => a.page === page && !a.deleted && a.type === 'pen')
+          .filter((a) => a.page === page && !a.deleted && ['pen', 'shape'].includes(a.type))
           .reverse()
           .find((a) =>
-            a.points.some(
-              (p) =>
-                Math.hypot((p.x - start.x) * canvas.clientWidth, (p.y - start.y) * canvas.clientHeight) < 18,
-            ),
+            a.type === 'shape'
+              ? hitShape(
+                  a,
+                  start,
+                  Number(canvas.parentElement.dataset.baseWidth),
+                  Number(canvas.parentElement.dataset.baseHeight),
+                  18 / this.scale,
+                )
+              : a.points.some(
+                  (p, i) =>
+                    distanceToSegment(
+                      { x: start.x * canvas.clientWidth, y: start.y * canvas.clientHeight },
+                      { x: p.x * canvas.clientWidth, y: p.y * canvas.clientHeight },
+                      {
+                        x: (a.points[i + 1] || p).x * canvas.clientWidth,
+                        y: (a.points[i + 1] || p).y * canvas.clientHeight,
+                      },
+                    ) < 18,
+                ),
           );
         if (hit) {
           await patch('annotations', hit.id, { deleted: true });
@@ -594,6 +896,7 @@ export class PdfViewer {
             { id: hit.id, before: false, after: true },
           ]);
           this.future.set(documentId, []);
+          this.notifyHistory();
           this.drawAnnotations(page);
           this.callbacks.saved();
         }
@@ -661,23 +964,5 @@ export class PdfViewer {
     };
     canvas.onpointerup = end;
     canvas.onpointercancel = end;
-  }
-  async find(query) {
-    if (!query.trim()) return null;
-    for (let offset = 0; offset < this.pdf.numPages; offset++) {
-      const number = ((this.page - 1 + offset) % this.pdf.numPages) + 1;
-      const content = await (await this.pdf.getPage(number)).getTextContent();
-      if (
-        content.items
-          .map((item) => item.str || '')
-          .join(' ')
-          .toLowerCase()
-          .includes(query.toLowerCase())
-      ) {
-        this.goTo(number);
-        return number;
-      }
-    }
-    return null;
   }
 }

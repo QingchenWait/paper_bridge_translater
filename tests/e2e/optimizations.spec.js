@@ -187,7 +187,7 @@ test('navigation shrinks the rail, renders thumbnails and resolves built-in name
   expect((await page.locator('.sidebar').boundingBox()).width).toBeLessThan(originalRail.width);
   await expect(page.locator('.sidebar .nav-item span').first()).toBeHidden();
   await expect
-    .poll(async () => (await page.locator('.pdf-page[data-page="1"]').boundingBox()).width)
+    .poll(async () => (await page.locator('.pdf-page[data-page="1"]').boundingBox())?.width || Infinity)
     .toBeLessThan(before.width);
   await page.getByRole('button', { name: '跳到第 2 页' }).click();
   await expect(page.locator('#page-input')).toHaveValue('2');
@@ -294,7 +294,7 @@ test('mobile navigation and custom size sliders stay in the viewport', async ({ 
   await page.setViewportSize({ width: 390, height: 844 });
   await setup(page);
   await page.getByRole('button', { name: '缩略图', exact: true }).click();
-  await expect(page.locator('.sidebar')).toBeVisible();
+  await expect(page.locator('.sidebar')).toBeHidden();
   await expect(page.locator('.pdf-thumbnail').first()).toBeVisible();
   await expect
     .poll(() => page.locator('#pdf-scroll').evaluate((el) => el.scrollWidth <= el.clientWidth + 2))
