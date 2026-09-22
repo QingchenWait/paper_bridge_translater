@@ -527,6 +527,18 @@ img {
   gap: 0.35rem;
   min-height: 3.35rem;
   z-index: 6;
+  overflow-x: auto;
+}
+.toolbar .select-menu {
+  position: fixed;
+  top: auto;
+  left: auto;
+  min-width: 8rem;
+  margin-top: 0.3rem;
+}
+.navigation-tools .icon-button.active {
+  background: #ece7ff;
+  box-shadow: inset 0 0 0 1px #ddd6ff;
 }
 .toolbar-group {
   display: flex;
@@ -670,6 +682,12 @@ img {
 .mark-underline {
   border-bottom: 1.5px solid var(--mark-color);
 }
+.mark-strike:after {
+  content: '';
+  position: absolute;
+  inset: 50% 0 auto;
+  border-top: 1.5px solid var(--mark-color);
+}
 .ink-layer {
   position: absolute;
   inset: 0;
@@ -680,6 +698,9 @@ img {
   pointer-events: none;
 }
 .pdf-scroll[data-tool='pen'] .ink-layer {
+  cursor: crosshair;
+}
+.pdf-scroll[data-tool='shape'] .ink-layer {
   cursor: crosshair;
 }
 .pdf-scroll[data-tool='eraser'] .ink-layer {
@@ -2033,11 +2054,11 @@ img {
   display: block;
   margin-bottom: 0.8rem;
 }
-.color-popover > div {
+.color-popover .color-swatches {
   display: flex;
   gap: 0.55rem;
 }
-.color-popover button {
+.color-popover .color-swatches button {
   background: var(--swatch);
   width: 1.7rem;
   height: 1.7rem;
@@ -2046,12 +2067,233 @@ img {
   border: 2px solid #fff;
   box-shadow: 0 0 0 1px #e9e8ef;
 }
-.color-popover button.selected {
+.color-popover .color-swatches button.selected {
   box-shadow: 0 0 0 2px #9890d8;
 }
 .color-popover .icon {
   width: 100%;
   height: 100%;
+}
+.color-popover .shape-options {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+}
+.shape-options button {
+  height: 2.4rem;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: #f8f8fd;
+}
+.shape-options button.selected {
+  background: #eee9ff;
+  border-color: #aa9ce9;
+}
+.shape-options .icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+.tool-size-label {
+  display: block;
+  color: #9398af;
+  font-size: 0.75rem;
+  margin: 1rem 0 0.45rem;
+}
+.tool-size-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+.tool-size-row output {
+  font-size: 0.75rem;
+  min-width: 3rem;
+  text-align: right;
+  color: #776a9d;
+  font-variant-numeric: tabular-nums;
+}
+.tool-size-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 1;
+  min-width: 0;
+  height: 1.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: ew-resize;
+}
+.tool-size-slider::-webkit-slider-runnable-track {
+  height: 0.35rem;
+  border-radius: 1rem;
+  background: linear-gradient(to right, #8975e8 var(--range-fill), #e9e5f5 var(--range-fill));
+}
+.tool-size-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid white;
+  border-radius: 50%;
+  background: #8975e8;
+  margin-top: -0.325rem;
+  box-shadow: 0 1px 5px #6f60b64d;
+}
+.tool-size-slider::-moz-range-track {
+  height: 0.35rem;
+  border-radius: 1rem;
+  background: #e9e5f5;
+}
+.tool-size-slider::-moz-range-progress {
+  height: 0.35rem;
+  border-radius: 1rem;
+  background: #8975e8;
+}
+.tool-size-slider::-moz-range-thumb {
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 2px solid white;
+  border-radius: 50%;
+  background: #8975e8;
+  box-shadow: 0 1px 5px #6f60b64d;
+}
+.tool-size-slider:focus-visible {
+  outline: 2px solid #b5a9f1;
+  outline-offset: 3px;
+}
+.message-thinking {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 1.7rem;
+  color: #8b80aa;
+  font-size: 0.85rem;
+}
+.icon-spin {
+  animation: spin 0.85s linear infinite;
+}
+.icon-button[aria-busy='true'] {
+  opacity: 1;
+  background: #f0ecff;
+  color: #7d6bcc;
+  cursor: progress;
+}
+.pdf-navigation {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: #ffffffb8;
+  border: 1px solid white;
+  border-radius: 1rem;
+  overflow: hidden;
+  margin-right: 0.6rem;
+}
+.pdf-navigation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.65rem 0.5rem;
+  gap: 0.3rem;
+  border-bottom: 1px solid var(--color-border);
+  flex: none;
+}
+.pdf-navigation-header strong {
+  font-size: 0.8rem;
+  font-weight: 550;
+  color: #7f7795;
+}
+.pdf-navigation-header .icon-button {
+  width: 1.8rem;
+  height: 1.8rem;
+}
+.pdf-navigation-header .icon {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.pdf-navigation-content {
+  min-height: 0;
+  overflow: auto;
+  padding: 0.7rem;
+  overscroll-behavior: contain;
+}
+.pdf-thumbnail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.6rem;
+  margin-bottom: 0.7rem;
+  border: 1px solid transparent;
+  border-radius: 0.65rem;
+  background: #f1f2f8;
+}
+.pdf-thumbnail.active {
+  border-color: #a597ed;
+  background: #eee9fc;
+}
+.pdf-thumbnail:hover {
+  background: #e8e5f6;
+}
+.thumbnail-paper {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 0.77;
+  background: white;
+  box-shadow: 0 0.1rem 0.4rem #49507215;
+  border-radius: 0.15rem;
+  overflow: hidden;
+}
+.thumbnail-paper > .icon {
+  width: 2rem;
+  height: 2rem;
+  opacity: 0.2;
+}
+.thumbnail-paper > img:not(.icon) {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.thumbnail-label {
+  font-size: 0.72rem;
+  color: #9991af;
+}
+.pdf-bookmark {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  text-align: left;
+  width: 100%;
+  padding: 0.65rem 0.4rem 0.65rem calc(0.25rem + var(--bookmark-depth) * 0.6rem);
+  font-size: 0.8rem;
+  border-radius: 0.5rem;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.pdf-bookmark:hover {
+  background: #eeebfb;
+}
+.pdf-bookmark .icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  margin-top: 0.2rem;
+  opacity: 0.4;
+}
+.navigation-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  line-height: 1.8;
+  text-align: center;
+  color: #a5a1b7;
+  font-size: 0.78rem;
+  padding: 1.5rem 0.3rem;
 }
 #toast-root {
   position: fixed;

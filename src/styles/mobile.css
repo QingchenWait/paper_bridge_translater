@@ -49,6 +49,93 @@
     padding: 0.55rem 0.6rem;
     gap: 0;
   }
+  :root[data-pdf-nav][data-view='reader'][data-mobile-pane='reader'] #app {
+    display: grid;
+    grid-template-columns: 3.2rem minmax(0, 1fr);
+  }
+  :root[data-pdf-nav][data-view='reader'][data-mobile-pane='reader'] .sidebar {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0.6rem 0.2rem;
+    gap: 1rem;
+    min-height: 0;
+  }
+  :root[data-pdf-nav][data-view='reader'][data-mobile-pane='reader'] .sidebar .brand {
+    justify-content: center;
+  }
+  :root[data-pdf-nav][data-view='reader'][data-mobile-pane='reader'] .sidebar .brand-symbol {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+  :root[data-pdf-nav][data-view='reader'][data-mobile-pane='reader'] .sidebar .brand-name,
+  :root[data-pdf-nav][data-view='reader'][data-mobile-pane='reader'] .sidebar .nav-item > span,
+  :root[data-pdf-nav][data-view='reader'][data-mobile-pane='reader'] .sidebar .version {
+    display: none;
+  }
+  :root[data-pdf-nav][data-view='reader'][data-mobile-pane='reader'] .sidebar .main-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  :root[data-pdf-nav][data-view='reader'][data-mobile-pane='reader'] .sidebar .sidebar-bottom {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  :root[data-pdf-nav][data-view='reader'][data-mobile-pane='reader'] .sidebar .nav-item {
+    padding: 0.5rem 0.25rem;
+    min-height: 3.15rem;
+  }
+  :root[data-pdf-nav][data-view='reader'][data-mobile-pane='reader'] .workspace {
+    display: grid;
+    grid-template-columns: minmax(5.6rem, 28%) minmax(0, 1fr);
+    gap: 0;
+    padding: 0.4rem 0.3rem;
+  }
+  .mobile-layout[data-mobile-pane='assistant'] .pdf-navigation {
+    display: none;
+  }
+  .pdf-navigation {
+    border-radius: 0.7rem;
+    margin-right: 0.3rem;
+  }
+  .pdf-navigation-header {
+    padding: 0.45rem 0.3rem;
+  }
+  .pdf-navigation-header strong {
+    font-size: 0.7rem;
+  }
+  .pdf-navigation-header .icon-button {
+    width: 1.6rem;
+  }
+  .pdf-navigation-content {
+    padding: 0.35rem;
+  }
+  .pdf-thumbnail {
+    padding: 0.3rem;
+    margin-bottom: 0.45rem;
+  }
+  .pdf-bookmark {
+    font-size: 0.72rem;
+    gap: 0.25rem;
+  }
+  .pdf-bookmark .icon {
+    display: none;
+  }
+  .tool-size-slider {
+    height: 2rem;
+  }
+  .tool-size-slider::-webkit-slider-thumb {
+    width: 1.3rem;
+    height: 1.3rem;
+    margin-top: -0.475rem;
+  }
+  .tool-size-slider::-moz-range-thumb {
+    width: 1rem;
+    height: 1rem;
+  }
   .split-handle {
     display: none;
   }

@@ -250,6 +250,10 @@ export class Assistant {
         : ''
     }</div>`;
     if (latest) mountMarkdown(this.root.querySelector('#full-result'), latest.content);
+    if (latest) {
+      this.root.querySelector('.result-toolbar').dataset.translationId = latest.id;
+      this.updateExportProgress();
+    }
     this.root.querySelector('#full-controls').inert = panel.collapsed;
     this.root.querySelector('[data-action="toggle-full-controls"]').onclick = () =>
       this.setFullCollapsed(doc.id, !panel.collapsed);
@@ -279,6 +283,8 @@ export class Assistant {
     this.root.querySelector('[data-select="translation-history"]')?.addEventListener('valuechange', (e) => {
       shown = records.find((r) => r.id === e.detail);
       mountMarkdown(this.root.querySelector('#full-result'), shown.content);
+      this.root.querySelector('.result-toolbar').dataset.translationId = shown.id;
+      this.updateExportProgress();
     });
     this.root
       .querySelector('[data-action="copy-full"]')
@@ -411,6 +417,7 @@ export class Assistant {
   async exportTranslation(record, open) {
     if (this.exportingTranslations.has(record.id)) return;
     this.exportingTranslations.add(record.id);
+    this.updateExportProgress();
     try {
       let translated = record.generatedDocumentId ? await get('documents', record.generatedDocumentId) : null;
       if (!translated) {
@@ -427,6 +434,23 @@ export class Assistant {
       else await saveFile((await get('files', translated.id)).blob, translated.name);
     } finally {
       this.exportingTranslations.delete(record.id);
+      this.updateExportProgress();
+    }
+  }
+  updateExportProgress() {
+    const toolbar = this.root.querySelector('.result-toolbar');
+    if (!toolbar) return;
+    const busy = this.exportingTranslations.has(toolbar.dataset.translationId);
+    for (const [action, name, label] of [
+      ['open-translated', 'book-open', '在左侧打开译文 PDF'],
+      ['export-full', 'download', '生成并下载 PDF'],
+    ]) {
+      const button = toolbar.querySelector(`[data-action="${action}"]`);
+      if (!button) continue;
+      button.disabled = busy;
+      button.setAttribute('aria-busy', String(busy));
+      button.title = busy ? '正在转换 PDF…' : label;
+      button.innerHTML = busy ? icon('loader-circle', 'icon-spin') : icon(name);
     }
   }
   async renderChat(epoch) {
@@ -503,6 +527,11 @@ export class Assistant {
     card.dataset.messageId = message.id;
     card.innerHTML = `<div class="message-label">${icon(message.role === 'user' ? 'message-square' : 'sparkles')}<span>${message.role === 'user' ? '你' : 'AI 助手'}${message.recovered ? ' · 恢复副本' : ''}</span><span class="message-time">${dateLabel(message.createdAt)}</span></div><div class="message-body markdown"></div><div class="message-status">${esc(message.error || (message.status === 'streaming' || message.status === 'interrupted' ? '未完成内容已保存' : ''))}</div>`;
     mountMarkdown(card.querySelector('.message-body'), message.content);
+    if (message.role === 'assistant' && !message.content && this.jobs.has(`chat:${message.conversationId}`)) {
+      card.querySelector('.message-body').innerHTML =
+        '<div class="message-thinking" role="status"><span class="spinner small" aria-hidden="true"></span><span>正在思考</span></div>';
+      card.querySelector('.message-status').textContent = '';
+    }
     list.append(card);
     return card;
   }

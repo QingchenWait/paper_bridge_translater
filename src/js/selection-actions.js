@@ -80,8 +80,9 @@ export async function planSelectionAction(type, annotations, selection, context)
   });
 }
 registerSelectionAction('underline', async () => ({}));
+registerSelectionAction('strike', async () => ({}));
 registerSelectionAction('highlight', async () => ({}));
-registerSelectionAction('note', async ({ inputText }) => {
+registerSelectionAction('note', async ({ inputText, fontSize = 12 }) => {
   const text = await inputText('note');
-  return text ? { text } : null;
+  return text ? { text, fontSize } : null;
 });

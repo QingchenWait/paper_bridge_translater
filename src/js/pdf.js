@@ -3,6 +3,7 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { all, put, patch, get, database } from './storage.js';
 import { uid } from './utils.js';
 import { planSelectionAction, selectionActionState } from './selection-actions.js';
+import { drawShape } from './shapes.js';
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 const base = import.meta.env.BASE_URL;
 export async function loadPdf(blob, onPassword) {
@@ -65,8 +66,76 @@ export class PdfViewer {
     this.history = new Map();
     this.future = new Map();
     this.scale = 1;
-    container.addEventListener('pointerup', (event) => {
-      if (event.pointerType !== 'touch') setTimeout(() => this.captureSelection(), 10);
+    this.drawingOptions = { noteSize: 12, textSize: 14, penWidth: 2, shape: 'rectangle' };
+    this.pointers = new Set();
+    this.selectionPointers = new Set();
+    this.touchCount = 0;
+    document.addEventListener(
+      'pointerdown',
+      (event) => {
+        if (container.contains(event.target)) {
+          this.pointers.add(event.pointerId);
+          clearTimeout(this.releaseTimer);
+          this.selectionPointers.add(event.pointerId);
+          this.translatedSelectionKey = '';
+        }
+      },
+      true,
+    );
+    document.addEventListener(
+      'pointerup',
+      (event) => {
+        this.pointers.delete(event.pointerId);
+        const fromPdf = this.selectionPointers.delete(event.pointerId) || container.contains(event.target);
+        if (fromPdf) this.queueSelectionTranslation(event.pointerType === 'touch' ? 60 : 0);
+      },
+      true,
+    );
+    document.addEventListener(
+      'pointercancel',
+      (event) => {
+        this.pointers.delete(event.pointerId);
+        this.selectionPointers.delete(event.pointerId);
+        clearTimeout(this.releaseTimer);
+      },
+      true,
+    );
+    document.addEventListener(
+      'touchstart',
+      (event) => {
+        if (container.contains(event.target) || this.pdfTouch) {
+          this.touchCount = event.touches.length;
+          this.pdfTouch = true;
+          clearTimeout(this.releaseTimer);
+        }
+      },
+      { capture: true, passive: true },
+    );
+    document.addEventListener(
+      'touchend',
+      (event) => {
+        this.touchCount = event.touches.length;
+        if (!this.touchCount && this.pdfTouch) {
+          this.pdfTouch = false;
+          this.queueSelectionTranslation(60);
+        }
+      },
+      { capture: true, passive: true },
+    );
+    document.addEventListener(
+      'touchcancel',
+      () => {
+        this.touchCount = 0;
+        this.pdfTouch = false;
+        clearTimeout(this.releaseTimer);
+      },
+      { capture: true, passive: true },
+    );
+    window.addEventListener('blur', () => {
+      this.pointers.clear();
+      this.selectionPointers.clear();
+      this.touchCount = 0;
+      clearTimeout(this.releaseTimer);
     });
     document.addEventListener('selectionchange', () => {
       clearTimeout(this.selectionTimer);
@@ -78,6 +147,23 @@ export class PdfViewer {
         matchMedia('(pointer: coarse)').matches ? 250 : 60,
       );
     });
+    document.addEventListener('keyup', (event) => {
+      if (
+        ['Shift', 'Control', 'Meta'].includes(event.key) ||
+        (!event.shiftKey &&
+          ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key))
+      )
+        this.queueSelectionTranslation();
+    });
+  }
+  queueSelectionTranslation(delay = 0) {
+    clearTimeout(this.releaseTimer);
+    if (this.pointers.size || this.touchCount) return;
+    if (delay) this.releaseTimer = setTimeout(() => this.captureSelection({ translate: true }), delay);
+    else this.captureSelection({ translate: true });
+  }
+  setDrawingOptions(options) {
+    this.drawingOptions = { ...this.drawingOptions, ...options };
   }
   async open(doc, pdf) {
     this.generation++;
@@ -169,6 +255,8 @@ export class PdfViewer {
     );
     shell.style.width = `${viewport.width}px`;
     shell.style.height = `${viewport.height}px`;
+    shell.dataset.baseWidth = viewport.width / this.scale;
+    shell.dataset.baseHeight = viewport.height / this.scale;
     const canvas = document.createElement('canvas');
     canvas.className = 'page-canvas';
     canvas.width = Math.ceil(viewport.width * ratio);
@@ -222,9 +310,12 @@ export class PdfViewer {
     this.container.dataset.tool = tool;
     this.container
       .querySelectorAll('.ink-layer')
-      .forEach((el) => (el.style.pointerEvents = ['pen', 'eraser', 'text'].includes(tool) ? 'auto' : 'none'));
+      .forEach(
+        (el) =>
+          (el.style.pointerEvents = ['pen', 'eraser', 'text', 'shape'].includes(tool) ? 'auto' : 'none'),
+      );
   }
-  captureSelection() {
+  captureSelection({ translate = false } = {}) {
     const selection = window.getSelection();
     if (!selection?.rangeCount || selection.isCollapsed) {
       this.clearSelection(false);
@@ -279,14 +370,24 @@ export class PdfViewer {
           rects.push(r);
       }
     }
-    if (this.selection?.text === value && JSON.stringify(this.selection.rects) === JSON.stringify(rects))
-      return;
+    const key = JSON.stringify({ documentId: this.doc.id, text: value, rects });
     this.selection = { text: value, rects };
     this.callbacks.selectionState?.(selectionActionState(this.annotations, this.selection));
-    this.callbacks.selection(value);
+    if (
+      translate &&
+      !this.pointers.size &&
+      !this.touchCount &&
+      rects.length &&
+      key !== this.translatedSelectionKey
+    ) {
+      this.translatedSelectionKey = key;
+      this.callbacks.selection(value);
+    }
   }
   clearSelection(clearNative = true) {
     this.selection = null;
+    this.translatedSelectionKey = '';
+    clearTimeout(this.releaseTimer);
     if (clearNative) window.getSelection()?.removeAllRanges();
     this.callbacks.selectionState?.({});
   }
@@ -299,6 +400,7 @@ export class PdfViewer {
       const changes = await planSelectionAction(type, this.annotations, selection, {
         color,
         inputText: this.callbacks.inputText,
+        fontSize: this.drawingOptions.noteSize,
       });
       if (!changes.length || this.doc.id !== documentId) return false;
       const now = Date.now();
@@ -401,17 +503,25 @@ export class PdfViewer {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     for (const annotation of this.annotations.filter((a) => a.page === pageNumber && !a.deleted)) {
-      if (annotation.type === 'pen') {
+      if (annotation.type === 'pen' || annotation.type === 'shape') {
+        const width = Number(shell.dataset.baseWidth),
+          height = Number(shell.dataset.baseHeight);
+        ctx.save();
+        ctx.scale(canvas.width / width, canvas.height / height);
         ctx.strokeStyle = annotation.color;
-        ctx.lineWidth = (2 * canvas.width) / shell.clientWidth;
+        ctx.lineWidth = annotation.strokeWidth || 1.6;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.beginPath();
-        annotation.points.forEach((point, i) =>
-          ctx[i ? 'lineTo' : 'moveTo'](point.x * canvas.width, point.y * canvas.height),
-        );
-        ctx.stroke();
-      } else if (['highlight', 'underline'].includes(annotation.type)) {
+        if (annotation.type === 'shape') drawShape(ctx, annotation, width, height);
+        else {
+          annotation.points.forEach((point, i) =>
+            ctx[i ? 'lineTo' : 'moveTo'](point.x * width, point.y * height),
+          );
+          ctx.stroke();
+        }
+        ctx.restore();
+      } else if (['highlight', 'underline', 'strike'].includes(annotation.type)) {
         for (const rect of annotation.rects) {
           const element = document.createElement('span');
           element.className = `mark mark-${annotation.type}`;
@@ -432,7 +542,7 @@ export class PdfViewer {
         element.style.left = `${annotation.x * 100}%`;
         element.style.top = `${annotation.y * 100}%`;
         element.style.setProperty('--annotation-color', annotation.color);
-        if (annotation.type === 'text')
+        if (annotation.type === 'text' || annotation.fontSize)
           element.style.fontSize = `${(annotation.fontSize || 14) * this.scale}px`;
         element.onclick = () => this.editAnnotation(annotation).catch(this.callbacks.error);
         layer.append(element);
@@ -442,6 +552,7 @@ export class PdfViewer {
   bindInk(canvas, page) {
     let points = null;
     let previous;
+    let gesture;
     const point = (event) => {
       const r = canvas.getBoundingClientRect();
       return {
@@ -453,7 +564,14 @@ export class PdfViewer {
       const start = point(event);
       const tool = this.tool;
       const documentId = this.doc.id;
-      if (tool === 'pen') {
+      if (tool === 'pen' || tool === 'shape') {
+        gesture = {
+          tool,
+          color: this.color,
+          strokeWidth: tool === 'pen' ? this.drawingOptions.penWidth : 2,
+          shape: this.drawingOptions.shape,
+          documentId,
+        };
         points = [start];
         previous = start;
         canvas.setPointerCapture(event.pointerId);
@@ -480,10 +598,12 @@ export class PdfViewer {
           this.callbacks.saved();
         }
       } else if (tool === 'text') {
+        const fontSize = this.drawingOptions.textSize,
+          color = this.color;
         try {
           const text = await this.callbacks.inputText(tool);
           if (text && this.doc.id === documentId)
-            await this.addAnnotation({ type: tool, color: this.color, page, ...start, text, fontSize: 14 });
+            await this.addAnnotation({ type: tool, color, page, ...start, text, fontSize });
         } catch (error) {
           this.callbacks.error(error);
         }
@@ -492,10 +612,26 @@ export class PdfViewer {
     canvas.onpointermove = (event) => {
       if (!points) return;
       const next = point(event);
+      if (gesture.tool === 'shape') {
+        points = [points[0], next];
+        this.drawAnnotations(page);
+        const shell = canvas.parentElement,
+          width = Number(shell.dataset.baseWidth),
+          height = Number(shell.dataset.baseHeight);
+        const ctx = canvas.getContext('2d');
+        ctx.save();
+        ctx.scale(canvas.width / width, canvas.height / height);
+        ctx.strokeStyle = gesture.color;
+        ctx.lineWidth = gesture.strokeWidth;
+        ctx.lineCap = 'round';
+        drawShape(ctx, { ...gesture, start: points[0], end: next }, width, height);
+        ctx.restore();
+        return;
+      }
       points.push(next);
       const ctx = canvas.getContext('2d');
-      ctx.strokeStyle = this.color;
-      ctx.lineWidth = (2 * canvas.width) / canvas.clientWidth;
+      ctx.strokeStyle = gesture.color;
+      ctx.lineWidth = (gesture.strokeWidth * canvas.width) / Number(canvas.parentElement.dataset.baseWidth);
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(previous.x * canvas.width, previous.y * canvas.height);
@@ -507,9 +643,21 @@ export class PdfViewer {
       if (!points) return;
       const completed = points;
       points = null;
-      this.addAnnotation({ type: 'pen', color: this.color, page, points: completed }).catch(
-        this.callbacks.error,
-      );
+      if (this.doc.id !== gesture.documentId) return;
+      const annotation =
+        gesture.tool === 'shape'
+          ? { type: 'shape', shape: gesture.shape, start: completed[0], end: completed.at(-1) }
+          : { type: 'pen', points: completed };
+      if (completed.length < 2) {
+        this.drawAnnotations(page);
+        return;
+      }
+      this.addAnnotation({
+        ...annotation,
+        color: gesture.color,
+        strokeWidth: gesture.strokeWidth,
+        page,
+      }).catch(this.callbacks.error);
     };
     canvas.onpointerup = end;
     canvas.onpointercancel = end;

@@ -1,5 +1,29 @@
 # 开发记录
 
+## 0.1.2 · 2026-09-22
+
+仅覆盖本轮六项优化及其必要的保存/导出/验证逻辑。数据库版本、消息上下文、API 请求格式、同步协议未调整；不清理或重置现有文档和设置，没有新增 npm 依赖。
+
+### 模块变动
+
+1. `ui/assistant.js`：空助手消息且当前会话仍有活动任务时显示思考环；首段输出替换占位，finally 移除任务后恢复普通状态。译文转换复用原互斥集合驱动按钮 `aria-busy`、禁用和已有 `loader-circle` 图标，渲染/切换记录时也保持一致。
+2. `pdf.js`：跟踪 PDF 选择手势的 Pointer/Touch 生命周期，selectionchange 只采集范围；鼠标松手直接提交，触控结束短暂等待原生选区稳定；取消手势不翻译，并保留键盘快捷键释放处理。避免点工具栏时取消已完成选区的翻译。
+3. `selection-actions.js`：注册 strike，继承与高亮/下划线相同的选择命中、局部移除和撤销规则；note 创建回调带入选择的 fontSize。
+4. 新增 `shapes.js`：在 PDF 点单位中统一矩形/圆形/直线/箭头几何和 Canvas 路径；`pdf.js` 保存归一化起止坐标、颜色和 strokeWidth，拖动时预览，提交后继承已有撤销机制。`pdf-export.js` 复用相同几何，导出矢量轮廓、线条、箭头和删除线，使用记录中的实际字号/笔宽。
+5. `main.js`：增加滑块和形状选择、自绘样式、工具栏入口；配置存入现有 settings 表的 `annotation-tools` 记录，不修改已有批注。新增导航栏容器及布局状态。
+6. 新增 `ui/pdf-navigation.js`：PDF.js `getOutline/getDestination/getPageIndex` 解析内置书签，IntersectionObserver 按需渲染缩略图并释放临时 Canvas；切换模式、文档或关闭时取消旧任务，防止旧异步结果回填。
+7. `archive.js`：扩充批注白名单和参数校验以接受 strike/shape/fontSize/strokeWidth；兼容缺省字段的旧记录。所有新内容仍走原事务和存档流程。
+8. `base.css/desktop.css/mobile.css`：状态环、尺寸滑块、删除线、导航栏和紧凑图标侧栏。桌面导航占用阅读部分宽度，移动端阅读态显示窄导航；翻译/管理视图保持原单页布局。
+9. 下载 `strikethrough/shapes/rectangle-horizontal/circle/gallery-vertical-end/bookmark` 六个 Lucide 0.468.0 SVG 至 `src/_logo/icons`，扩充可复现下载脚本及来源文档。PDF.js API 官方页面已下载核对，实际接口另以锁定依赖的类型和运行验证核查。
+
+### 验证
+
+新增 `tests/shapes.test.mjs` 和 `tests/e2e/optimizations.spec.js`：检查几何/反向拖动、删除线及批注字号、鼠标/触控按住不请求、思考状态、转换忙碌反馈、命名书签跳页、导航互斥/宽度变化、尺寸偏好、四种形状、存档回读及实际 PDF 导出。
+
+最终验证全部通过：`npm run check`、15 项单元测试、22 项 Chrome 浏览器用例（含原 16 项和新 6 项）、`npm run build`、`npm run test:dist`。新增内容已验证刷新恢复、备份校验、真实 PDF 导出与中文文本提取；桌面与 390×844 手机视口截图已查看，导航展开后手机 PDF 无横向溢出。触控通过浏览器触控 Pointer 事件模拟，未执行实体手机设备测试。LLM 状态使用可控响应验证，不调用用户真实账号。
+
+生产产物约 16.3 MiB，仍为无后端静态文件；新图标直接打包。PDF.js 的已有中文子集字体类型警告仍出现，但导出读取及中文文本提取通过，与本次状态/工具改动无关。
+
 ## 0.1.1 · 2026-09-22
 
 范围限定为用户反馈的九项问题。未改动数据库 schema、存档格式、原文/译文关系、聊天历史组织、WebDAV 或 PDF 导出内容格式；依赖未新增。

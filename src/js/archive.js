@@ -147,13 +147,21 @@ export async function readArchive(blob, password = '') {
         !Number.isInteger(a.page) ||
         a.page < 1 ||
         a.page > data.documents.find((d) => d.id === a.documentId).pages ||
-        !['pen', 'highlight', 'underline', 'text', 'note'].includes(a.type) ||
+        !['pen', 'highlight', 'underline', 'strike', 'text', 'note', 'shape'].includes(a.type) ||
         !/^#[0-9a-f]{6}$/i.test(a.color) ||
         (a.type === 'pen' && (!Array.isArray(a.points) || a.points.some((p) => !unit(p.x) || !unit(p.y)))) ||
-        (['highlight', 'underline'].includes(a.type) &&
+        (['highlight', 'underline', 'strike'].includes(a.type) &&
           (!Array.isArray(a.rects) ||
             a.rects.some((r) => !unit(r.x) || !unit(r.y) || !unit(r.w) || !unit(r.h)))) ||
-        (['text', 'note'].includes(a.type) && (typeof a.text !== 'string' || !unit(a.x) || !unit(a.y))),
+        (['text', 'note'].includes(a.type) && (typeof a.text !== 'string' || !unit(a.x) || !unit(a.y))) ||
+        (a.fontSize !== undefined && (!Number.isFinite(a.fontSize) || a.fontSize <= 0 || a.fontSize > 144)) ||
+        (a.strokeWidth !== undefined &&
+          (!Number.isFinite(a.strokeWidth) || a.strokeWidth <= 0 || a.strokeWidth > 48)) ||
+        (a.type === 'shape' &&
+          (!['rectangle', 'circle', 'line', 'arrow'].includes(a.shape) ||
+            !a.start ||
+            !a.end ||
+            ![a.start.x, a.start.y, a.end.x, a.end.y].every(unit))),
     )
   )
     throw new Error('批注数据不完整');

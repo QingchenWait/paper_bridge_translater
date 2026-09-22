@@ -6,6 +6,8 @@ import { getSettings } from './settings.js';
 import { scheduleSync, syncWebDav } from './archive.js';
 import { loadPdf, extractPdfText, PdfViewer } from './pdf.js';
 import { isSelectionAction } from './selection-actions.js';
+import { SHAPES } from './shapes.js';
+import { PdfNavigation } from './ui/pdf-navigation.js';
 import { esc, sizeLabel, dateLabel, saveFile, errorMessage } from './utils.js';
 import {
   icon,
@@ -24,9 +26,11 @@ import { openSettings, onboarding } from './ui/settings-panel.js';
 import { Assistant } from './ui/assistant.js';
 const TOOLS = [
   ['underline', 'underline', '文字下划线'],
+  ['strike', 'strikethrough', '文字删除线'],
   ['highlight', 'highlighter', '文字高亮'],
   ['note', 'message-square', '批注'],
   ['text', 'type', '添加文本框'],
+  ['shape', 'shapes', '形状绘制'],
   ['pen', 'pencil', '手绘笔迹'],
   ['eraser', 'eraser', '手绘橡皮擦'],
 ];
@@ -41,11 +45,14 @@ class App {
     this.selectionStates = {};
     this.colors = {
       underline: '#6370ee',
+      strike: '#6370ee',
       highlight: '#ffe082',
       note: '#e8ae3e',
       text: '#334155',
       pen: '#ef6380',
+      shape: '#6370ee',
     };
+    this.toolOptions = { noteSize: 12, textSize: 14, penWidth: 2, shape: 'rectangle' };
     this.openGeneration = 0;
     this.textCache = new Map();
   }
@@ -72,11 +79,37 @@ class App {
       },
     });
     this.assistant = new Assistant(this);
+    this.navigation = new PdfNavigation(document.getElementById('pdf-navigation'), {
+      navigate: (page) => this.viewer.goTo(page),
+      error: (error) => toast(errorMessage(error), 'error'),
+      onMode: (mode) => {
+        if (mode) document.documentElement.dataset.pdfNav = mode;
+        else delete document.documentElement.dataset.pdfNav;
+        this.renderToolbar();
+        document.dispatchEvent(new Event('reader-resize'));
+      },
+    });
     initDesktopLayout();
     initMobileLayout();
     this.bind();
     this.documents = await all('documents');
     const workspace = (await get('settings', 'workspace'))?.value;
+    const preferences = (await get('settings', 'annotation-tools'))?.value;
+    if (preferences) {
+      for (const key of Object.keys(this.colors))
+        if (/^#[0-9a-f]{6}$/i.test(preferences.colors?.[key])) this.colors[key] = preferences.colors[key];
+      for (const [key, min, max] of [
+        ['noteSize', 6, 48],
+        ['textSize', 6, 48],
+        ['penWidth', 0.5, 12],
+      ]) {
+        const value = Number(preferences.options?.[key]);
+        if (Number.isFinite(value)) this.toolOptions[key] = Math.min(max, Math.max(min, value));
+      }
+      if (SHAPES.some(([key]) => key === preferences.options?.shape))
+        this.toolOptions.shape = preferences.options.shape;
+    }
+    this.viewer.setDrawingOptions(this.toolOptions);
     this.assistant.currentThreads = new Map(workspace?.currentThreads || []);
     this.openIds = (workspace?.openIds || []).filter((id) => this.documents.some((d) => d.id === id));
     const recoverable = (await all('messages')).filter((m) => m.status === 'streaming');
@@ -108,9 +141,13 @@ class App {
   }
   mount() {
     document.getElementById('app').innerHTML =
-      `<aside class="sidebar"><a class="brand" href="#" aria-label="纸间主页"><span class="brand-symbol">${icon('book-open')}</span><span class="brand-name">纸间<span>PAPER BRIDGE</span></span></a><nav class="main-nav">${button('reader', 'book-open', 'PDF 翻译', 'nav-item active')}${button('library', 'folder-open', '文档管理', 'nav-item')}${button('records', 'history', '翻译记录', 'nav-item')}</nav><div class="sidebar-bottom">${button('cloud', 'cloud', '云同步', 'nav-item')}${button('settings', 'settings-2', '设置', 'nav-item')}${button('help', 'circle-help', '使用帮助', 'nav-item')}<span class="version">v0.1.1</span></div></aside><main class="main-shell"><header class="mobile-header"><span>${icon('book-open')}纸间</span>${iconButton('upload', 'plus', '打开 PDF')}</header><div class="workspace" id="workspace"><section class="reader-panel" aria-label="PDF 阅读区"><div class="document-bar"><div id="document-tabs" class="document-tabs"></div>${button('upload', 'plus', '打开 PDF', 'open-pdf')}</div><div class="toolbar" id="pdf-toolbar"></div><div class="reader-body"><div class="pdf-scroll" id="pdf-scroll"></div><div class="reader-empty" id="reader-empty"><div class="empty-book"><img src="${illustration('open-book')}" alt="打开的书"></div><div class="empty-caption">YOUR NEXT GREAT IDEA STARTS HERE</div><h1>翻开一页，<br>遇见更大的世界。</h1><p>将 PDF 拖到这里，开始一场没有语言边界的阅读。</p>${button('upload', 'upload', '打开本地 PDF', 'primary large')}<span class="upload-hint">支持多份文档 · 自动保存阅读进度</span><div class="empty-features"><span>${icon('highlighter')}随手批注</span><span>${icon('languages')}划词即译</span><span>${icon('sparkles')}AI 问答</span></div></div></div><footer class="reader-status"><span id="document-status">一张书桌，无限可能</span><span id="save-status">${icon('shield-check')}本地自动保存</span></footer></section><div class="split-handle" id="split-handle" role="separator" aria-label="调整左右栏宽度" aria-orientation="vertical" tabindex="0"></div><section class="assistant-panel" aria-label="翻译与 AI 助手"><header class="assistant-header"><div class="segmented" role="tablist"><button data-assistant-tab="selection" class="active" role="tab" aria-selected="true">划词翻译</button><button data-assistant-tab="full" role="tab" aria-selected="false">全文翻译</button><button data-assistant-tab="chat" role="tab" aria-selected="false">AI 问答</button></div><button id="translation-settings" class="translation-settings" title="翻译设置" aria-label="翻译设置">${icon('settings-2')}<span>翻译设置</span>${icon('chevron-down')}</button></header><div id="assistant-content" class="assistant-content"></div></section></div><section id="library-view" class="library-view" hidden></section><nav class="mobile-nav"><button class="active" data-mobile-pane="reader">${icon('book-open')}阅读</button><button data-mobile-pane="assistant">${icon('languages')}翻译 / AI</button>${button('library', 'folder-open', '文档')}${button('settings', 'settings-2', '设置')}</nav></main><div id="color-popover" class="color-popover" hidden></div>`;
+      `<aside class="sidebar"><a class="brand" href="#" aria-label="纸间主页"><span class="brand-symbol">${icon('book-open')}</span><span class="brand-name">纸间<span>PAPER BRIDGE</span></span></a><nav class="main-nav">${button('reader', 'book-open', 'PDF 翻译', 'nav-item active')}${button('library', 'folder-open', '文档管理', 'nav-item')}${button('records', 'history', '翻译记录', 'nav-item')}</nav><div class="sidebar-bottom">${button('cloud', 'cloud', '云同步', 'nav-item')}${button('settings', 'settings-2', '设置', 'nav-item')}${button('help', 'circle-help', '使用帮助', 'nav-item')}<span class="version">v0.1.2</span></div></aside><main class="main-shell"><header class="mobile-header"><span>${icon('book-open')}纸间</span>${iconButton('upload', 'plus', '打开 PDF')}</header><div class="workspace" id="workspace"><aside id="pdf-navigation" class="pdf-navigation" aria-label="PDF 导航" hidden></aside><section class="reader-panel" aria-label="PDF 阅读区"><div class="document-bar"><div id="document-tabs" class="document-tabs"></div>${button('upload', 'plus', '打开 PDF', 'open-pdf')}</div><div class="toolbar" id="pdf-toolbar"></div><div class="reader-body"><div class="pdf-scroll" id="pdf-scroll"></div><div class="reader-empty" id="reader-empty"><div class="empty-book"><img src="${illustration('open-book')}" alt="打开的书"></div><div class="empty-caption">YOUR NEXT GREAT IDEA STARTS HERE</div><h1>翻开一页，<br>遇见更大的世界。</h1><p>将 PDF 拖到这里，开始一场没有语言边界的阅读。</p>${button('upload', 'upload', '打开本地 PDF', 'primary large')}<span class="upload-hint">支持多份文档 · 自动保存阅读进度</span><div class="empty-features"><span>${icon('highlighter')}随手批注</span><span>${icon('languages')}划词即译</span><span>${icon('sparkles')}AI 问答</span></div></div></div><footer class="reader-status"><span id="document-status">一张书桌，无限可能</span><span id="save-status">${icon('shield-check')}本地自动保存</span></footer></section><div class="split-handle" id="split-handle" role="separator" aria-label="调整左右栏宽度" aria-orientation="vertical" tabindex="0"></div><section class="assistant-panel" aria-label="翻译与 AI 助手"><header class="assistant-header"><div class="segmented" role="tablist"><button data-assistant-tab="selection" class="active" role="tab" aria-selected="true">划词翻译</button><button data-assistant-tab="full" role="tab" aria-selected="false">全文翻译</button><button data-assistant-tab="chat" role="tab" aria-selected="false">AI 问答</button></div><button id="translation-settings" class="translation-settings" title="翻译设置" aria-label="翻译设置">${icon('settings-2')}<span>翻译设置</span>${icon('chevron-down')}</button></header><div id="assistant-content" class="assistant-content"></div></section></div><section id="library-view" class="library-view" hidden></section><nav class="mobile-nav"><button class="active" data-mobile-pane="reader">${icon('book-open')}阅读</button><button data-mobile-pane="assistant">${icon('languages')}翻译 / AI</button>${button('library', 'folder-open', '文档')}${button('settings', 'settings-2', '设置')}</nav></main><div id="color-popover" class="color-popover" hidden></div>`;
   }
   bind() {
+    document.querySelectorAll('.sidebar .nav-item').forEach((button) => {
+      button.setAttribute('aria-label', button.textContent.trim());
+      button.title = button.textContent.trim();
+    });
     document.getElementById('pdf-toolbar').addEventListener('pointerdown', (event) => {
       const action = event.target.closest('[data-action]')?.dataset.action;
       if (action?.startsWith('tool-') && isSelectionAction(action.slice(5))) {
@@ -198,6 +235,7 @@ class App {
       await openSettings(this, action === 'help' ? 'about' : action === 'cloud' ? 'cloud' : 'api');
     else if (action === 'open-document') await this.openDocument(target.dataset.id);
     else if (action === 'close-document') await this.closeDocument(target.dataset.id);
+    else if (action === 'thumbnails' || action === 'bookmarks') this.navigation.toggle(action);
     else if (action === 'zoom-in' || action === 'zoom-out') {
       if (this.pdf)
         await this.changeZoom(
@@ -270,6 +308,7 @@ class App {
       return;
     }
     const previous = this.pdf;
+    this.navigation.setDocument(pdf);
     this.pdf = pdf;
     this.active = doc;
     this.activeId = id;
@@ -295,6 +334,7 @@ class App {
         this.active = null;
         this.viewer.generation++;
         this.viewer.observer?.disconnect();
+        this.navigation.setDocument(null);
         if (this.pdf) await this.pdf.destroy();
         this.pdf = null;
         document.getElementById('pdf-scroll').replaceChildren();
@@ -343,17 +383,23 @@ class App {
     ];
     if (zoom !== 'fit' && !zoomOptions.some((o) => o[0] === zoom))
       zoomOptions.push([zoom, `${Math.round(zoom * 100)}%`]);
-    root.innerHTML = `<div class="toolbar-group zoom-group">${select('zoom', zoomOptions, zoom, '缩放比例')}${iconButton('zoom-in', 'plus', '放大')}${iconButton('zoom-out', 'minus', '缩小')}</div><span class="toolbar-divider"></span><div class="toolbar-group page-group"><input id="page-input" value="${this.viewer?.page || 1}" inputmode="numeric" aria-label="当前页码"><span class="total-pages">/ ${this.pdf?.numPages || 0}</span>${iconButton('prev-page', 'chevron-left', '上一页')}${iconButton('next-page', 'chevron-right', '下一页')}</div><span class="toolbar-divider"></span><div class="toolbar-group annotation-group">${TOOLS.slice(
+    root.innerHTML = `<div class="toolbar-group navigation-tools">${iconButton('thumbnails', 'gallery-vertical-end', '缩略图')}${iconButton('bookmarks', 'bookmark', '书签')}</div><span class="toolbar-divider"></span><div class="toolbar-group zoom-group">${select('zoom', zoomOptions, zoom, '缩放比例')}${iconButton('zoom-in', 'plus', '放大')}${iconButton('zoom-out', 'minus', '缩小')}</div><span class="toolbar-divider"></span><div class="toolbar-group page-group"><input id="page-input" value="${this.viewer?.page || 1}" inputmode="numeric" aria-label="当前页码"><span class="total-pages">/ ${this.pdf?.numPages || 0}</span>${iconButton('prev-page', 'chevron-left', '上一页')}${iconButton('next-page', 'chevron-right', '下一页')}</div><span class="toolbar-divider"></span><div class="toolbar-group annotation-group">${TOOLS.slice(
       0,
-      4,
+      5,
     )
       .map(([tool, name, label]) => this.toolButton(tool, name, label))
-      .join('')}</div><span class="toolbar-divider"></span><div class="toolbar-group">${TOOLS.slice(4)
+      .join('')}</div><span class="toolbar-divider"></span><div class="toolbar-group">${TOOLS.slice(5)
       .map(([tool, name, label]) => this.toolButton(tool, name, label))
       .join(
         '',
       )}</div><div class="toolbar-spacer"></div><div class="toolbar-group extra-tools">${iconButton('undo', 'undo-2', '撤销批注 (Ctrl+Z)')}${iconButton('redo', 'redo-2', '重做批注 (Ctrl+Shift+Z)')}${iconButton('search-pdf', 'search', '查找文字')}${iconButton('download-pdf', 'download', '下载包含批注的 PDF')}</div>`;
     if (!this.active) root.querySelectorAll('button,input').forEach((el) => (el.disabled = true));
+    for (const mode of ['thumbnails', 'bookmarks']) {
+      const button = root.querySelector(`[data-action="${mode}"]`);
+      const active = this.navigation?.mode === mode;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    }
     bindSelects(root);
     root
       .querySelector('[data-select="zoom"]')
@@ -372,8 +418,9 @@ class App {
   }
   toolButton(tool, name, label) {
     const color = this.colors[tool];
+    const hasMenu = Boolean(color) && !['underline', 'strike'].includes(tool);
     const pressed = isSelectionAction(tool) ? Boolean(this.selectionStates[tool]) : this.tool === tool;
-    return `<div class="tool-pair ${pressed ? 'active' : ''}"><button class="tool-main" data-action="tool-${tool}" title="${label}" aria-label="${label}" aria-pressed="${pressed}">${icon(name)}${color && tool !== 'underline' ? `<span class="tool-color" style="background:${color}"></span>` : ''}</button>${color && tool !== 'underline' ? `<button class="tool-color-toggle" data-action="color-${tool}" title="${label}颜色" aria-label="${label}颜色">${icon('chevron-down')}</button>` : ''}</div>`;
+    return `<div class="tool-pair ${pressed ? 'active' : ''}"><button class="tool-main" data-action="tool-${tool}" title="${label}" aria-label="${label}" aria-pressed="${pressed}">${icon(name)}${hasMenu ? `<span class="tool-color" style="background:${color}"></span>` : ''}</button>${hasMenu ? `<button class="tool-color-toggle" data-action="color-${tool}" title="${label}颜色" aria-label="${label}颜色">${icon('chevron-down')}</button>` : ''}</div>`;
   }
   updateToolButtons() {
     for (const [tool] of TOOLS) {
@@ -400,20 +447,60 @@ class App {
         ? ['#ffe082', '#b4e3c5', '#b7d7ff', '#dcc8ff', '#ffc4cf', '#ffd5af']
         : ['#6370ee', '#334155', '#e8ae3e', '#21a179', '#ef6380', '#9361c9'];
     const root = document.getElementById('color-popover');
-    root.innerHTML = `<span>${TOOLS.find((t) => t[0] === tool)[2]}颜色</span><div>${colors.map((c) => `<button style="--swatch:${c}" data-color="${c}" aria-label="颜色 ${c}" class="${this.colors[tool] === c ? 'selected' : ''}">${this.colors[tool] === c ? icon('check') : ''}</button>`).join('')}</div>`;
+    const sizeKey = { note: 'noteSize', text: 'textSize', pen: 'penWidth' }[tool];
+    const min = tool === 'pen' ? 0.5 : 6,
+      max = tool === 'pen' ? 12 : 48;
+    root.innerHTML = `${tool === 'shape' ? `<span>形状</span><div class="shape-options">${SHAPES.map(([key, name, label]) => `<button data-shape="${key}" class="${this.toolOptions.shape === key ? 'selected' : ''}" aria-label="${label}" aria-pressed="${this.toolOptions.shape === key}">${icon(name)}</button>`).join('')}</div>` : ''}<span>${TOOLS.find((t) => t[0] === tool)[2]}颜色</span><div class="color-swatches">${colors.map((c) => `<button style="--swatch:${c}" data-color="${c}" aria-label="颜色 ${c}" class="${this.colors[tool] === c ? 'selected' : ''}">${this.colors[tool] === c ? icon('check') : ''}</button>`).join('')}</div>${sizeKey ? `<label class="tool-size-label" for="tool-size">${tool === 'pen' ? '笔迹粗细' : '字体尺寸'}</label><div class="tool-size-row"><input id="tool-size" class="tool-size-slider" type="range" min="${min}" max="${max}" step="${tool === 'pen' ? 0.5 : 1}" value="${this.toolOptions[sizeKey]}" aria-label="${tool === 'pen' ? '笔迹粗细' : '字体尺寸'}"><output for="tool-size">${this.toolOptions[sizeKey]} pt</output></div>` : ''}`;
     root.hidden = false;
     const rect = target.getBoundingClientRect();
-    root.style.left = `${Math.min(innerWidth - 240, Math.max(10, rect.left - 50))}px`;
-    root.style.top = `${rect.bottom + 10}px`;
+    root.style.left = `${Math.max(10, Math.min(innerWidth - root.offsetWidth - 10, rect.left - 50))}px`;
+    root.style.top = `${Math.max(10, Math.min(innerHeight - root.offsetHeight - 10, rect.bottom + 10))}px`;
+    const slider = root.querySelector('input[type="range"]');
+    const updateSlider = () => {
+      const value = Number(slider.value);
+      this.toolOptions[sizeKey] = value;
+      root.querySelector('output').textContent = `${value} pt`;
+      slider.style.setProperty('--range-fill', `${((value - min) / (max - min)) * 100}%`);
+      this.viewer.setDrawingOptions(this.toolOptions);
+    };
+    if (slider) {
+      updateSlider();
+      slider.oninput = updateSlider;
+      slider.onchange = () => this.saveToolOptions();
+    }
     root.onclick = (e) => {
       const swatch = e.target.closest('[data-color]');
       if (swatch) {
         this.colors[tool] = swatch.dataset.color;
         if (this.tool === tool) this.viewer.setTool(tool, swatch.dataset.color);
         this.renderToolbar();
-        root.hidden = true;
+        this.saveToolOptions();
+        if (!sizeKey && tool !== 'shape') root.hidden = true;
+        else
+          root.querySelectorAll('[data-color]').forEach((button) => {
+            const active = button.dataset.color === this.colors[tool];
+            button.classList.toggle('selected', active);
+            button.innerHTML = active ? icon('check') : '';
+          });
+      }
+      const shape = e.target.closest('[data-shape]');
+      if (shape) {
+        this.toolOptions.shape = shape.dataset.shape;
+        this.viewer.setDrawingOptions(this.toolOptions);
+        root.querySelectorAll('[data-shape]').forEach((button) => {
+          const active = button === shape;
+          button.classList.toggle('selected', active);
+          button.setAttribute('aria-pressed', String(active));
+        });
+        this.saveToolOptions();
       }
     };
+  }
+  saveToolOptions() {
+    return put('settings', {
+      id: 'annotation-tools',
+      value: { colors: this.colors, options: this.toolOptions },
+    }).catch((error) => toast(errorMessage(error), 'error'));
   }
   async changeZoom(zoom) {
     if (!this.active) return;
@@ -422,6 +509,7 @@ class App {
     this.renderToolbar();
   }
   setPage(page) {
+    this.navigation?.setPage(page);
     const input = document.getElementById('page-input');
     if (input) input.value = page;
     if (this.active) {

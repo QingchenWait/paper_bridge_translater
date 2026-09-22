@@ -8,6 +8,11 @@ foreach ($name in $names) {
   $remoteName = switch ($name) { 'circle-help' { 'circle-question-mark' } 'stop-circle' { 'circle-stop' } default { $name } }
   Invoke-WebRequest -Uri "https://raw.githubusercontent.com/lucide-icons/lucide/0.468.0/icons/$remoteName.svg" -OutFile (Join-Path $icons "$name.svg")
 }
+foreach ($name in @('strikethrough','shapes','rectangle-horizontal','circle','gallery-vertical-end','bookmark')) {
+  if (-not (Test-Path (Join-Path $icons "$name.svg"))) {
+    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/lucide-icons/lucide/0.468.0/icons/$name.svg" -OutFile (Join-Path $icons "$name.svg")
+  }
+}
 Invoke-WebRequest 'https://raw.githubusercontent.com/lucide-icons/lucide/main/LICENSE' -OutFile (Join-Path $root 'src/_logo/LUCIDE-LICENSE')
 Invoke-WebRequest 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Open%20book/3D/open_book_3d.png' -OutFile (Join-Path $root 'src/_logo/art/open-book.png')
 Invoke-WebRequest 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Sparkles/3D/sparkles_3d.png' -OutFile (Join-Path $root 'src/_logo/art/sparkles.png')

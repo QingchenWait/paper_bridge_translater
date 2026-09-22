@@ -1,6 +1,7 @@
 import { PDFDocument, rgb, degrees } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { mountMarkdown } from './markdown.js';
+import { shapeGeometry } from './shapes.js';
 const color = (value) => {
   const hex = value.replace('#', '');
   return rgb(
@@ -33,12 +34,12 @@ export async function exportAnnotatedPdf(blob, annotations, sourcePdf) {
       const [px, py] = viewport.convertToPdfPoint(x * viewport.width, y * viewport.height);
       return { x: px, y: py };
     };
-    if (['highlight', 'underline'].includes(annotation.type))
+    if (['highlight', 'underline', 'strike'].includes(annotation.type))
       for (const rect of annotation.rects) {
-        if (annotation.type === 'underline')
+        if (annotation.type === 'underline' || annotation.type === 'strike')
           page.drawLine({
-            start: point(rect.x, rect.y + rect.h),
-            end: point(rect.x + rect.w, rect.y + rect.h),
+            start: point(rect.x, rect.y + rect.h * (annotation.type === 'strike' ? 0.5 : 1)),
+            end: point(rect.x + rect.w, rect.y + rect.h * (annotation.type === 'strike' ? 0.5 : 1)),
             color: color(annotation.color),
             thickness: 1,
           });
@@ -62,9 +63,42 @@ export async function exportAnnotatedPdf(blob, annotations, sourcePdf) {
           start: point(annotation.points[i - 1].x, annotation.points[i - 1].y),
           end: point(annotation.points[i].x, annotation.points[i].y),
           color: color(annotation.color),
-          thickness: 1.6,
+          thickness: annotation.strokeWidth || 1.6,
         });
-    else {
+    else if (annotation.type === 'shape') {
+      const geometry = shapeGeometry(annotation, viewport.width, viewport.height);
+      const convert = (p) => point(p.x / viewport.width, p.y / viewport.height);
+      const borderColor = color(annotation.color),
+        borderWidth = annotation.strokeWidth || 2;
+      if (geometry.type === 'rectangle') {
+        const p1 = convert(geometry),
+          p2 = convert({ x: geometry.x + geometry.width, y: geometry.y + geometry.height });
+        page.drawRectangle({
+          x: Math.min(p1.x, p2.x),
+          y: Math.min(p1.y, p2.y),
+          width: Math.abs(p2.x - p1.x),
+          height: Math.abs(p2.y - p1.y),
+          borderColor,
+          borderWidth,
+        });
+      } else if (geometry.type === 'circle') {
+        const center = convert(geometry),
+          edge = convert({ x: geometry.x + geometry.radius, y: geometry.y });
+        page.drawCircle({
+          ...center,
+          size: Math.hypot(edge.x - center.x, edge.y - center.y),
+          borderColor,
+          borderWidth,
+        });
+      } else
+        for (const [start, end] of geometry.segments)
+          page.drawLine({
+            start: convert(start),
+            end: convert(end),
+            color: borderColor,
+            thickness: borderWidth,
+          });
+    } else {
       const size = annotation.fontSize || 12;
       const p = point(annotation.x, annotation.y + size / viewport.height);
       page.drawText(annotation.text, {
