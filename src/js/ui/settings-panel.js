@@ -1,5 +1,5 @@
 import { getSettings, saveSettings, PROVIDERS } from '../settings.js';
-import { uid, esc, saveFile, dateLabel, errorMessage } from '../utils.js';
+import { uid, esc, chooseSaveTarget, saveFile, dateLabel, errorMessage } from '../utils.js';
 import { createArchive, importArchive, importFritiaSettings, syncWebDav, testWebDav } from '../archive.js';
 import { testProvider, listModels } from '../llm.js';
 import {
@@ -166,14 +166,14 @@ export async function openSettings(app, tab = 'api') {
       content.innerHTML = `<h3>把阅读进度一起带走</h3><p class="muted">备份包含全部 PDF、批注、全文译文、对话和配置。导入会合并现有数据，冲突版本保留恢复副本。</p><div class="archive-card">${icon('database')}<div><h4>本地完整备份</h4><p>可选择密码加密后导出</p></div></div><label class="field"><span>备份密码（可选）</span><input id="backup-password" type="password" placeholder="留空导出普通 ZIP" autocomplete="new-password"></label><label class="toggle-row"><span>包含 API Key 和云同步凭据<small>未加密的 ZIP 可被直接读取</small></span><input id="include-secrets" type="checkbox"><span class="switch"></span></label><div class="form-actions">${button('export-archive', 'download', '导出存档', 'primary')}${button('import-archive', 'upload', '导入并合并')}</div><p class="note">文档保存在当前浏览器。清理站点数据或使用隐私窗口会影响本地存储，请保留备份。</p>`;
       content.querySelector('[data-action="export-archive"]').onclick = run(async () => {
         const password = content.querySelector('#backup-password').value;
+        const filename = `paper-bridge-${new Date().toISOString().slice(0, 10)}.${password ? 'pbak' : 'zip'}`;
+        const target = await chooseSaveTarget(filename);
+        if (!target) return;
         const blob = await createArchive({
           password,
           includeSecrets: content.querySelector('#include-secrets').checked,
         });
-        await saveFile(
-          blob,
-          `paper-bridge-${new Date().toISOString().slice(0, 10)}.${password ? 'pbak' : 'zip'}`,
-        );
+        await saveFile(blob, filename, { target });
         toast('备份已生成');
       });
       const restore = document.createElement('label');
@@ -236,7 +236,7 @@ export async function openSettings(app, tab = 'api') {
         toast('云端和本地数据已合并同步');
       });
     } else {
-      content.innerHTML = `<h3>纸间 · Paper Bridge <span class="badge">0.1.3</span></h3><p>让语言不再打断阅读。</p><div class="help-list"><p><b>选词与翻译</b><br>在 PDF 上拖选文字，单词进入在线词典，多词句子进入翻译。点击工具栏按钮可添加批注。</p><p><b>全文翻译</b><br>文件输入需接口支持。普通模型会接收提取后的完整文字；扫描件需要支持 PDF 的视觉模型。模型原生 PDF 需支持代码执行与文件输出，也可选择本地排版（视觉 PDF，无文字层）。</p><p><b>快捷键</b><br>Ctrl / ⌘ + O 打开文档 · Ctrl / ⌘ + Z 撤销批注 · Ctrl / ⌘ + Shift + Z 重做 · Esc 关闭菜单</p><p><b>数据与连接</b><br>文档默认只存本机。翻译或问答时将选定文本 / 文档发送给所选服务商。在线词典使用 Free Dictionary、Wiktionary；免费翻译使用 MyMemory，存在网络与额度限制。</p><p><b>开源致谢</b><br>PDF.js · pdf-lib · KaTeX · Lucide · Fluent Emoji · Noto Sans<br>设置及存档流程继承海姆休息室（GPL-3.0）。</p></div>`;
+      content.innerHTML = `<h3>纸间 · Paper Bridge <span class="badge">0.2.0</span></h3><p>让语言不再打断阅读。</p><div class="help-list"><p><b>选词与翻译</b><br>在 PDF 上拖选文字，单词进入在线词典，多词句子进入翻译。点击工具栏按钮可添加批注。</p><p><b>全文翻译</b><br>文件输入需接口支持。普通模型会接收提取后的完整文字；扫描件需要支持 PDF 的视觉模型。模型原生 PDF 需支持代码执行与文件输出，也可选择本地排版（视觉 PDF，无文字层）。</p><p><b>快捷键</b><br>Ctrl / ⌘ + O 打开文档 · Ctrl / ⌘ + Z 撤销批注 · Ctrl / ⌘ + Shift + Z 重做 · Esc 关闭菜单</p><p><b>数据与连接</b><br>文档默认只存本机。翻译或问答时将选定文本 / 文档发送给所选服务商。在线词典使用 Free Dictionary、Wiktionary；免费翻译使用 MyMemory，存在网络与额度限制。</p><p><b>开源致谢</b><br>PDF.js · pdf-lib · KaTeX · Lucide · Fluent Emoji · Noto Sans<br>设置及存档流程继承海姆休息室（GPL-3.0）。</p></div>`;
     }
     bindSelects(content);
   };

@@ -8,7 +8,8 @@ import { loadPdf, extractPdfText, PdfViewer } from './pdf.js';
 import { isSelectionAction } from './selection-actions.js';
 import { SHAPES } from './shapes.js';
 import { PdfNavigation } from './ui/pdf-navigation.js';
-import { esc, sizeLabel, dateLabel, saveFile, errorMessage } from './utils.js';
+import { LibraryView } from './ui/library.js';
+import { esc, sizeLabel, dateLabel, chooseSaveTarget, saveFile, errorMessage } from './utils.js';
 import {
   icon,
   iconButton,
@@ -58,6 +59,10 @@ class App {
   }
   async init() {
     this.mount();
+    this.library = new LibraryView(this, document.getElementById('library-view'));
+    window.addEventListener('storage-blocked', () =>
+      toast('数据库升级正在等待，请关闭其他打开旧版本的纸间标签页后重试。', 'error'),
+    );
     this.viewer = new PdfViewer(document.getElementById('pdf-scroll'), {
       error: (error) => toast(errorMessage(error), 'error'),
       selection: (text) => this.assistant.translateSelection(text).catch((e) => toast(e.message, 'error')),
@@ -144,7 +149,7 @@ class App {
   }
   mount() {
     document.getElementById('app').innerHTML =
-      `<aside class="sidebar"><a class="brand" href="#" aria-label="纸间主页"><span class="brand-symbol">${icon('book-open')}</span><span class="brand-name">纸间<span>PAPER BRIDGE</span></span></a><nav class="main-nav">${button('reader', 'book-open', 'PDF 翻译', 'nav-item active')}${button('library', 'folder-open', '文档管理', 'nav-item')}${button('records', 'history', '翻译记录', 'nav-item')}</nav><div class="sidebar-bottom">${button('cloud', 'cloud', '云同步', 'nav-item')}${button('settings', 'settings-2', '设置', 'nav-item')}${button('help', 'circle-help', '使用帮助', 'nav-item')}<span class="version">v0.1.3</span></div></aside><main class="main-shell"><header class="mobile-header"><span>${icon('book-open')}纸间</span>${iconButton('upload', 'plus', '打开 PDF')}</header><div class="workspace" id="workspace"><aside id="pdf-navigation" class="pdf-navigation" aria-label="PDF 导航" hidden></aside><section class="reader-panel" aria-label="PDF 阅读区"><div class="document-bar"><div id="document-tabs" class="document-tabs"></div>${button('upload', 'plus', '打开 PDF', 'open-pdf')}</div><div class="toolbar" id="pdf-toolbar"></div><div class="reader-body"><div class="pdf-scroll" id="pdf-scroll"></div><div class="reader-empty" id="reader-empty"><div class="empty-book"><img src="${illustration('open-book')}" alt="打开的书"></div><div class="empty-caption">YOUR NEXT GREAT IDEA STARTS HERE</div><h1>翻开一页，<br>遇见更大的世界。</h1><p>将 PDF 拖到这里，开始一场没有语言边界的阅读。</p>${button('upload', 'upload', '打开本地 PDF', 'primary large')}<span class="upload-hint">支持多份文档 · 自动保存阅读进度</span><div class="empty-features"><span>${icon('highlighter')}随手批注</span><span>${icon('languages')}划词即译</span><span>${icon('sparkles')}AI 问答</span></div></div></div><footer class="reader-status"><span id="document-status">一张书桌，无限可能</span><span id="save-status">${icon('shield-check')}本地自动保存</span></footer></section><div class="split-handle" id="split-handle" role="separator" aria-label="调整左右栏宽度" aria-orientation="vertical" tabindex="0"></div><section class="assistant-panel" aria-label="翻译与 AI 助手"><header class="assistant-header"><div class="segmented" role="tablist"><button data-assistant-tab="selection" class="active" role="tab" aria-selected="true">划词翻译</button><button data-assistant-tab="full" role="tab" aria-selected="false">全文翻译</button><button data-assistant-tab="chat" role="tab" aria-selected="false">AI 问答</button></div><button id="translation-settings" class="translation-settings" title="翻译设置" aria-label="翻译设置">${icon('settings-2')}<span>翻译设置</span>${icon('chevron-down')}</button></header><div id="assistant-content" class="assistant-content"></div></section></div><section id="library-view" class="library-view" hidden></section><nav class="mobile-nav"><button class="active" data-mobile-pane="reader">${icon('book-open')}阅读</button><button data-mobile-pane="assistant">${icon('languages')}翻译 / AI</button>${button('library', 'folder-open', '文档')}${button('settings', 'settings-2', '设置')}</nav></main><div id="color-popover" class="color-popover" hidden></div>`;
+      `<aside class="sidebar"><a class="brand" href="#" aria-label="纸间主页"><span class="brand-symbol">${icon('book-open')}</span><span class="brand-name">纸间<span>PAPER BRIDGE</span></span></a><nav class="main-nav">${button('reader', 'book-open', 'PDF 翻译', 'nav-item active')}${button('library', 'folder-open', '文档管理', 'nav-item')}${button('records', 'history', '翻译记录', 'nav-item')}</nav><div class="sidebar-bottom">${button('cloud', 'cloud', '云同步', 'nav-item')}${button('settings', 'settings-2', '设置', 'nav-item')}${button('help', 'circle-help', '使用帮助', 'nav-item')}<span class="version">v0.2.0</span></div></aside><main class="main-shell"><header class="mobile-header"><span>${icon('book-open')}纸间</span>${iconButton('upload', 'plus', '打开 PDF')}</header><div class="workspace" id="workspace"><aside id="pdf-navigation" class="pdf-navigation" aria-label="PDF 导航" hidden></aside><section class="reader-panel" aria-label="PDF 阅读区"><div class="document-bar"><div id="document-tabs" class="document-tabs"></div>${button('upload', 'plus', '打开 PDF', 'open-pdf')}</div><div class="toolbar" id="pdf-toolbar"></div><div class="reader-body"><div class="pdf-scroll" id="pdf-scroll"></div><div class="reader-empty" id="reader-empty"><div class="empty-book"><img src="${illustration('open-book')}" alt="打开的书"></div><div class="empty-caption">YOUR NEXT GREAT IDEA STARTS HERE</div><h1>翻开一页，<br>遇见更大的世界。</h1><p>将 PDF 拖到这里，开始一场没有语言边界的阅读。</p>${button('upload', 'upload', '打开本地 PDF', 'primary large')}<span class="upload-hint">支持多份文档 · 自动保存阅读进度</span><div class="empty-features"><span>${icon('highlighter')}随手批注</span><span>${icon('languages')}划词即译</span><span>${icon('sparkles')}AI 问答</span></div></div></div><footer class="reader-status"><span id="document-status">一张书桌，无限可能</span><span id="save-status">${icon('shield-check')}本地自动保存</span></footer></section><div class="split-handle" id="split-handle" role="separator" aria-label="调整左右栏宽度" aria-orientation="vertical" tabindex="0"></div><section class="assistant-panel" aria-label="翻译与 AI 助手"><header class="assistant-header"><div class="segmented" role="tablist"><button data-assistant-tab="selection" class="active" role="tab" aria-selected="true">划词翻译</button><button data-assistant-tab="full" role="tab" aria-selected="false">全文翻译</button><button data-assistant-tab="chat" role="tab" aria-selected="false">AI 问答</button></div><button id="translation-settings" class="translation-settings" title="翻译设置" aria-label="翻译设置">${icon('settings-2')}<span>翻译设置</span>${icon('chevron-down')}</button></header><div id="assistant-content" class="assistant-content"></div></section></div><section id="library-view" class="library-view" hidden></section><nav class="mobile-nav"><button class="active" data-mobile-pane="reader">${icon('book-open')}阅读</button><button data-mobile-pane="assistant">${icon('languages')}翻译 / AI</button>${button('library', 'folder-open', '文档')}${button('settings', 'settings-2', '设置')}</nav></main><div id="color-popover" class="color-popover" hidden></div>`;
   }
   bind() {
     document.querySelectorAll('.sidebar .nav-item').forEach((button) => {
@@ -255,6 +260,7 @@ class App {
     else if (action.startsWith('color-')) this.colorPicker(action.slice(6), target);
   }
   async importFiles(files) {
+    const folderId = document.documentElement.dataset.view === 'library' ? this.library.folderId : null;
     for (const file of [...files]) {
       if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
         toast(`${file.name} 不是 PDF 文件`, 'error');
@@ -264,7 +270,7 @@ class App {
       try {
         toast(`正在导入 ${file.name}`);
         pdf = await loadPdf(file, () => inputDialog('打开加密 PDF', { password: true, label: 'PDF 密码' }));
-        const doc = await addDocument(file, file.name, pdf.numPages);
+        const doc = await addDocument(file, file.name, pdf.numPages, null, folderId);
         this.documents.push(doc);
         await this.openDocument(doc.id, pdf);
         pdf = null;
@@ -283,6 +289,8 @@ class App {
         `${source.name.replace(/\.pdf$/i, '')} · 译文.pdf`,
         pdf.numPages,
         source.rootId,
+        source.folderId || null,
+        source.id,
       );
       await patch('documents', doc.id, { translationId });
       this.documents.push(doc);
@@ -292,9 +300,27 @@ class App {
     }
   }
   async openDocument(id, loaded) {
+    if (this.openingPromise) {
+      if (loaded) await loaded.destroy();
+      return this.openingPromise;
+    }
+    const pending = this.performOpenDocument(id, loaded);
+    this.openingPromise = pending;
+    document.getElementById('document-tabs').setAttribute('aria-busy', 'true');
+    try {
+      return await pending;
+    } finally {
+      if (this.openingPromise === pending) this.openingPromise = null;
+      document.getElementById('document-tabs').setAttribute('aria-busy', 'false');
+    }
+  }
+  async performOpenDocument(id, loaded) {
     const generation = ++this.openGeneration;
     const doc = await get('documents', id);
-    if (!doc) return;
+    if (!doc) {
+      await loaded?.destroy();
+      return;
+    }
     if (id === this.activeId && !loaded) {
       this.showReader();
       setMobilePane('reader');
@@ -305,7 +331,7 @@ class App {
       (await loadPdf((await get('files', id)).blob, () =>
         inputDialog('打开加密 PDF', { password: true, label: 'PDF 密码' }),
       ));
-    if (generation !== this.openGeneration) {
+    if (generation !== this.openGeneration || !(await get('documents', id))) {
       await pdf.destroy();
       return;
     }
@@ -420,6 +446,7 @@ class App {
     };
   }
   toolButton(tool, name, label) {
+    if (tool === 'shape') name = SHAPES.find(([key]) => key === this.toolOptions.shape)?.[1] || name;
     const color = this.colors[tool];
     const hasMenu = Boolean(color) && !['underline', 'strike'].includes(tool);
     const pressed = isSelectionAction(tool) ? Boolean(this.selectionStates[tool]) : this.tool === tool;
@@ -496,6 +523,9 @@ class App {
       if (shape) {
         this.toolOptions.shape = shape.dataset.shape;
         this.viewer.setDrawingOptions(this.toolOptions);
+        this.tool = 'shape';
+        this.viewer.setTool('shape', this.colors.shape);
+        this.renderToolbar();
         root.querySelectorAll('[data-shape]').forEach((button) => {
           const active = button === shape;
           button.classList.toggle('selected', active);
@@ -543,50 +573,8 @@ class App {
       .forEach((btn) => btn.classList.toggle('active', btn.dataset.action === 'reader'));
   }
   async showLibrary() {
-    this.documents = await all('documents');
     this.showSecondary('library');
-    const root = document.getElementById('library-view');
-    root.innerHTML = `<header class="library-header"><div><p class="eyebrow">YOUR PERSONAL LIBRARY</p><h1>我的文档 <span class="count-badge">${this.documents.length}</span></h1><p>每一份文档，每一次思考，都在这里。</p></div>${button('upload', 'plus', '导入 PDF', 'primary')}</header><div class="library-tools"><label class="search-field">${icon('search')}<input id="library-search" placeholder="搜索文档名称" aria-label="搜索文档"></label><span>${sizeLabel(this.documents.reduce((n, d) => n + d.size, 0))} · 本地存储</span></div><div id="document-grid" class="document-grid"></div>`;
-    const render = (query) => {
-      const docs = this.documents
-        .filter((d) => d.name.toLowerCase().includes(query.toLowerCase()))
-        .sort((a, b) => b.createdAt - a.createdAt);
-      root.querySelector('#document-grid').innerHTML = docs.length
-        ? docs
-            .map(
-              (d) =>
-                `<article class="library-card"><button class="document-cover" data-action="open-document" data-id="${d.id}">${icon('file-text')}<span>PDF</span>${d.rootId !== d.id ? '<small>译文</small>' : ''}</button><div class="library-card-body"><button class="library-document-name" data-action="open-document" data-id="${d.id}">${esc(d.name)}</button><p>${d.pages} 页 <span>·</span> ${sizeLabel(d.size)}</p><footer><span>${dateLabel(d.createdAt)}</span><div><button class="icon-button" data-rename="${d.id}" aria-label="重命名文档" title="重命名">${icon('pencil')}</button><button class="icon-button" data-download="${d.id}" aria-label="下载原始 PDF" title="下载原始 PDF">${icon('download')}</button></div></footer></div></article>`,
-            )
-            .join('')
-        : `<div class="library-empty">${icon('folder-open')}<h2>${query ? '没有匹配的文档' : '你的第一份文档，从这里开始'}</h2><p>导入 PDF 后，文档及其批注会自动保存在这里。</p>${button('upload', 'upload', '导入 PDF', 'primary')}</div>`;
-      root.querySelectorAll('[data-download]').forEach(
-        (btn) =>
-          (btn.onclick = async () => {
-            const doc = this.documents.find((d) => d.id === btn.dataset.download);
-            try {
-              await saveFile((await get('files', doc.id)).blob, doc.name);
-            } catch (e) {
-              toast(e.message, 'error');
-            }
-          }),
-      );
-      root.querySelectorAll('[data-rename]').forEach(
-        (btn) =>
-          (btn.onclick = async () => {
-            const doc = this.documents.find((d) => d.id === btn.dataset.rename);
-            const name = await inputDialog('重命名文档', { value: doc.name, label: '文档名称' });
-            if (name) {
-              await patch('documents', doc.id, { name });
-              doc.name = name;
-              if (this.activeId === doc.id) this.active.name = name;
-              render(root.querySelector('#library-search').value);
-              this.renderTabs();
-            }
-          }),
-      );
-    };
-    render('');
-    root.querySelector('#library-search').oninput = (event) => render(event.target.value);
+    await this.library.open();
   }
   showSecondary(view) {
     document.getElementById('workspace').hidden = true;
@@ -645,16 +633,21 @@ class App {
     try {
       const doc = this.active;
       const sourcePdf = this.pdf;
+      const filename = this.viewer.annotations.some((a) => !a.deleted)
+        ? doc.name.replace(/\.pdf$/i, ' · 批注.pdf')
+        : doc.name;
+      const target = await chooseSaveTarget(filename);
+      if (!target) return;
       const file = await get('files', doc.id);
       const annotations = (await all('annotations')).filter((a) => a.documentId === doc.id && !a.deleted);
       if (!annotations.length) {
-        await saveFile(file.blob, doc.name);
+        await saveFile(file.blob, filename, { target });
         return;
       }
       toast('正在将批注写入 PDF…');
       const { exportAnnotatedPdf } = await import('./pdf-export.js');
       const blob = await exportAnnotatedPdf(file.blob, annotations, sourcePdf);
-      await saveFile(blob, doc.name.replace(/\.pdf$/i, ' · 批注.pdf'));
+      await saveFile(blob, filename, { target });
     } finally {
       this.savingPDF = false;
       if (button?.isConnected) button.disabled = false;
@@ -662,6 +655,12 @@ class App {
   }
   async reload() {
     this.documents = await all('documents');
+    const existing = new Set(this.documents.map((d) => d.id));
+    this.openIds = this.openIds.filter((id) => existing.has(id));
+    if (this.activeId && !existing.has(this.activeId)) {
+      await this.closeDocument(this.activeId);
+      return;
+    }
     if (this.activeId) {
       const id = this.activeId;
       this.activeId = null;
@@ -670,6 +669,32 @@ class App {
       this.renderTabs();
       await this.assistant.render();
     }
+  }
+  async prepareLibraryDeletion(plan) {
+    await this.openingPromise?.catch(() => {});
+    clearTimeout(this.pageTimer);
+    await this.assistant.stopForDeletion(plan);
+  }
+  async afterLibraryDeletion(result) {
+    const removed = new Set(result.documentIds);
+    this.documents = await all('documents');
+    this.openIds = this.openIds.filter((id) => !removed.has(id));
+    for (const id of removed) {
+      this.textCache.delete(id);
+      this.assistant.selections.delete(id);
+      this.assistant.fullPanels.delete(id);
+      this.viewer.history.delete(id);
+      this.viewer.future.delete(id);
+    }
+    for (const root of result.deadRoots) this.assistant.currentThreads.delete(root);
+    if (removed.has(this.activeId)) await this.closeDocument(this.activeId);
+    else {
+      this.renderTabs();
+      this.renderToolbar();
+      await this.assistant.render();
+    }
+    await this.saveWorkspace();
+    this.showSecondary('library');
   }
   refreshAssistant() {
     this.assistant.render().catch((e) => toast(e.message, 'error'));

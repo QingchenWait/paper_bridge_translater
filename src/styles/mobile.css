@@ -1,5 +1,49 @@
 /* Independent portrait layout. Pane switching is handled by ui/mobile.js. */
 @media (max-width: 960px) {
+  .library-header,
+  .library-tools {
+    flex-wrap: wrap;
+  }
+  .library-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .library-actions .button {
+    font-size: 0.72rem;
+    min-height: 2.8rem;
+  }
+  .library-view-tools {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .library-check {
+    width: 2.2rem;
+    height: 2.2rem;
+    left: 0.45rem;
+    top: 0.45rem;
+  }
+  .library-list .library-card {
+    padding: 0.65rem;
+    gap: 0.55rem;
+  }
+  .library-list .library-card-body {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.4rem;
+  }
+  .library-list .library-card-body footer {
+    grid-column: 1/-1;
+  }
+  .library-list .document-cover {
+    width: 2.4rem;
+    height: 2.4rem;
+  }
+  .folder-create-row {
+    flex-wrap: wrap;
+  }
+  .folder-create-row input {
+    width: 100%;
+    flex-basis: 100%;
+  }
   :root {
     font-size: 14px;
   }

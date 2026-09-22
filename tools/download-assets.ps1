@@ -8,7 +8,7 @@ foreach ($name in $names) {
   $remoteName = switch ($name) { 'circle-help' { 'circle-question-mark' } 'stop-circle' { 'circle-stop' } default { $name } }
   Invoke-WebRequest -Uri "https://raw.githubusercontent.com/lucide-icons/lucide/0.468.0/icons/$remoteName.svg" -OutFile (Join-Path $icons "$name.svg")
 }
-foreach ($name in @('strikethrough','shapes','rectangle-horizontal','circle','gallery-vertical-end','bookmark')) {
+foreach ($name in @('strikethrough','shapes','rectangle-horizontal','circle','gallery-vertical-end','bookmark','folder-plus','folder-input','layout-grid','list','arrow-up','arrow-down','folder-tree')) {
   if (-not (Test-Path (Join-Path $icons "$name.svg"))) {
     Invoke-WebRequest -Uri "https://raw.githubusercontent.com/lucide-icons/lucide/0.468.0/icons/$name.svg" -OutFile (Join-Path $icons "$name.svg")
   }

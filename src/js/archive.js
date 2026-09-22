@@ -1,7 +1,8 @@
 // Archive/WebDAV workflow adapted from 海姆休息室 archive_sync.js (GPL-3.0).
 // PDF-specific storage uses atomic merge and immutable source files instead of clearing stores.
 import { zip, unzipSync, strToU8, strFromU8 } from 'fflate';
-import { snapshot, mergeSnapshot, get } from './storage.js';
+import { snapshot, mergeSnapshot, get, STORES } from './storage.js';
+import { validateFolderTree } from './library.js';
 import { sha256, safeUrl, bytesToBase64 } from './utils.js';
 import { getSettings, saveSettings, reloadSettings } from './settings.js';
 const MAGIC = strToU8('PBRIDGE1');
@@ -33,7 +34,7 @@ export async function createArchive({ includeSecrets = true, password = '' } = {
       return { ...row, value };
     });
   entries['manifest.json'] = strToU8(
-    JSON.stringify({ format: 'paper-bridge', version: 1, createdAt: Date.now(), data, digests }),
+    JSON.stringify({ format: 'paper-bridge', version: 2, createdAt: Date.now(), data, digests }),
   );
   const bytes = await makeZip(entries);
   return new Blob([password ? await encrypt(bytes, password) : bytes], {
@@ -91,25 +92,21 @@ export async function readArchive(blob, password = '') {
   });
   if (!files['manifest.json']) throw new Error('没有找到存档清单');
   const manifest = JSON.parse(strFromU8(files['manifest.json']));
-  if (manifest.format !== 'paper-bridge' || manifest.version !== 1)
+  if (manifest.format !== 'paper-bridge' || ![1, 2].includes(manifest.version))
     throw new Error('这不是受支持的纸间存档。海姆休息室配置请通过 API 设置中的迁移入口导入。');
   const data = manifest.data;
-  for (const store of [
-    'documents',
-    'files',
-    'annotations',
-    'conversations',
-    'messages',
-    'translations',
-    'settings',
-  ]) {
+  if (manifest.version === 1) {
+    data.folders = [];
+    data.deletions = [];
+  }
+  for (const store of STORES) {
     if (!Array.isArray(data?.[store])) throw new Error(`存档缺少 ${store}，未导入`);
     const ids = new Set();
     for (const row of data[store]) {
       if (
         !row ||
         typeof row.id !== 'string' ||
-        !/^[a-zA-Z0-9_-]{1,200}$/.test(row.id) ||
+        !(store === 'deletions' ? /^[a-zA-Z0-9_-]{1,256}$/ : /^[a-zA-Z0-9_-]{1,200}$/).test(row.id) ||
         ids.has(row.id) ||
         !Number.isFinite(row.updatedAt)
       )
@@ -117,6 +114,34 @@ export async function readArchive(blob, password = '') {
       ids.add(row.id);
     }
   }
+  for (const tomb of data.deletions) {
+    if (
+      !['documents', 'files', 'annotations', 'conversations', 'messages', 'translations', 'folders'].includes(
+        tomb.store,
+      ) ||
+      typeof tomb.key !== 'string' ||
+      tomb.id !== `${tomb.store}-${tomb.key}` ||
+      !/^[a-zA-Z0-9_-]{1,200}$/.test(tomb.key)
+    )
+      throw new Error('删除记录不合法');
+    if (['files', 'annotations'].includes(tomb.store) && typeof tomb.documentId !== 'string')
+      throw new Error('删除记录缺少所属文档');
+    if (tomb.store === 'files' && tomb.key !== tomb.documentId) throw new Error('文件删除记录关联错误');
+    if (['conversations', 'translations'].includes(tomb.store) && typeof tomb.rootId !== 'string')
+      throw new Error('删除记录缺少文档组');
+    if (tomb.store === 'messages' && typeof tomb.conversationId !== 'string')
+      throw new Error('消息删除记录关联错误');
+  }
+  if (
+    data.folders.some(
+      (f) =>
+        typeof f.name !== 'string' ||
+        !f.name.trim() ||
+        (f.parentId !== null && f.parentId !== undefined && typeof f.parentId !== 'string'),
+    )
+  )
+    throw new Error('文件夹数据不合法');
+  validateFolderTree(data.folders);
   for (const row of data.files) {
     const content = files[row.path];
     if (!content || (await sha256(content)) !== manifest.digests[row.path])
@@ -126,13 +151,20 @@ export async function readArchive(blob, password = '') {
     delete row.path;
   }
   const documentIds = new Set(data.documents.map((d) => d.id));
+  const rootAnchors = new Set([
+    ...documentIds,
+    ...data.deletions.filter((t) => t.store === 'documents').map((t) => t.key),
+  ]);
+  const liveRoots = new Set(data.documents.map((d) => d.rootId));
+  const folderIds = new Set(data.folders.map((f) => f.id));
   const fileIds = new Set(data.files.map((d) => d.id));
   const conversationIds = new Set(data.conversations.map((c) => c.id));
   if (
     data.documents.some(
       (d) =>
         !fileIds.has(d.id) ||
-        !documentIds.has(d.rootId) ||
+        !rootAnchors.has(d.rootId) ||
+        (d.folderId && !folderIds.has(d.folderId)) ||
         typeof d.name !== 'string' ||
         !Number.isInteger(d.pages) ||
         d.pages < 1,
@@ -166,7 +198,7 @@ export async function readArchive(blob, password = '') {
   )
     throw new Error('批注数据不完整');
   if (
-    data.conversations.some((c) => !documentIds.has(c.rootId) || typeof c.title !== 'string') ||
+    data.conversations.some((c) => !liveRoots.has(c.rootId) || typeof c.title !== 'string') ||
     data.messages.some(
       (m) =>
         !conversationIds.has(m.conversationId) ||
@@ -177,7 +209,7 @@ export async function readArchive(blob, password = '') {
     throw new Error('对话引用不完整');
   if (
     data.translations.some(
-      (t) => !documentIds.has(t.documentId) || !documentIds.has(t.rootId) || typeof t.content !== 'string',
+      (t) => !documentIds.has(t.documentId) || !liveRoots.has(t.rootId) || typeof t.content !== 'string',
     )
   )
     throw new Error('译文数据不完整');
@@ -185,7 +217,7 @@ export async function readArchive(blob, password = '') {
 }
 export async function importArchive(blob, { password = '', restoreSettings = false } = {}) {
   const data = await readArchive(blob, password);
-  await mergeSnapshot(data, { restoreSettings });
+  await mergeSnapshot(data, { restoreSettings, restoreDeleted: true });
   if (restoreSettings) await reloadSettings();
   return data;
 }

@@ -1,6 +1,6 @@
 # 项目结构与开发逻辑
 
-适用版本：0.1.3。入口为 `index.html` → `src/js/main.js`。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
+适用版本：0.2.0。入口为 `index.html` → `src/js/main.js`。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
 
 ## 文件树
 
@@ -28,11 +28,12 @@ pdf_translater/
 │  ├─ _logo/
 │  │  ├─ LUCIDE-LICENSE
 │  │  ├─ FLUENT-LICENSE
-│  │  ├─ icons/*.svg               54 个已下载 Lucide 图标，清单见下
+│  │  ├─ icons/*.svg               61 个已下载 Lucide 图标，清单见下
 │  │  └─ art/{open-book,sparkles}.png
 │  ├─ js/
 │  │  ├─ main.js                   应用协调、标签、工具栏、文档管理
-│  │  ├─ storage.js                七表 IndexedDB、事务写入和合并
+│  │  ├─ storage.js                九表 IndexedDB、事务写入、精确删除合并
+│  │  ├─ library.js                文件夹、选择范围、移动、删除计划及 ZIP
 │  │  ├─ settings.js               多 API 兼容配置、归一化、默认服务
 │  │  ├─ utils.js                  转义、UUID、下载、哈希、格式化
 │  │  ├─ text.js                   PDF 排版清洗、单词判断、按字节切片
@@ -49,6 +50,7 @@ pdf_translater/
 │  │  └─ ui/
 │  │     ├─ components.js          图标、按钮、下拉、弹窗、提示、输入框
 │  │     ├─ assistant.js           划词、全文、AI 会话与任务状态
+│  │     ├─ library.js             文档管理卡片/列表、多选和操作弹窗
 │  │     ├─ pdf-navigation.js      缩略图、内置书签、目标解析及导航渲染生命周期
 │  │     ├─ settings-panel.js      设置四页、首次引导、迁移入口
 │  │     ├─ desktop.js             桌面状态和分栏调整独立交互
@@ -73,10 +75,12 @@ pdf_translater/
 │  ├─ save-file.test.mjs           单次保存、取消和写失败不重复下载测试
 │  ├─ shapes.test.mjs              形状几何、删除线及字号规则测试
 │  ├─ search-geometry.test.mjs     搜索过滤、跨文本片段、移动边界与命中测试
+│  ├─ library.test.mjs             目录/删除边界、事务回滚、共享历史、ZIP 和冲突测试
 │  └─ e2e/
 │     ├─ app.spec.js               原有合成 PDF 的真实浏览器功能回归
 │     ├─ optimizations.spec.js     状态反馈、松手翻译、绘图尺寸和导航回归
-│     └─ reader-refinements.spec.js 字形坐标、旋转/裁切、高 DPI、拖动/历史及搜索浮窗
+│     ├─ reader-refinements.spec.js 字形坐标、旋转/裁切、高 DPI、拖动/历史及搜索浮窗
+│     └─ library.spec.js           文档库交互、共享历史、下载、切换锁和无损升级
 ├─ dist/                           构建产物，不手工编辑
 ├─ node_modules/                   npm 依赖，不手工编辑
 ├─ .cache/                         npm 缓存、开发期官方文档，不进入发布
@@ -89,19 +93,23 @@ pdf_translater/
 
 0.1.2 追加的六个图标文件：`strikethrough.svg`、`shapes.svg`、`rectangle-horizontal.svg`、`circle.svg`、`gallery-vertical-end.svg`、`bookmark.svg`。直线、箭头和转换进度复用已有 minus、arrow-up-right、loader-circle 图标。
 
+0.2.0 追加：`folder-plus.svg`、`folder-input.svg`、`layout-grid.svg`、`list.svg`、`arrow-up.svg`、`arrow-down.svg`、`folder-tree.svg`（Lucide 0.468.0）。
+
 ## 数据模型与不变量
 
-数据库名 `paper-bridge`，版本 1；所有对象仓库以 `id` 为 keyPath。
+数据库名 `paper-bridge`，版本 2；所有对象仓库以 `id` 为 keyPath。升级仅新增缺失表，旧文档 folderId 缺省视为根目录，不重写或清除原数据。
 
 | 表 | 核心字段 | 用途 / 不变量 |
 | --- | --- | --- |
-| documents | id, rootId, name, pages, size, page, zoom, createdAt, updatedAt, translationId? | 标签、管理栏、阅读进度；原文 rootId=id，译文指向原文根 ID |
+| documents | id, rootId, folderId?, name, pages, size, page, zoom, createdAt, updatedAt, translationId? | folderId 为空代表根目录；rootId 是稳定逻辑组 ID，原文删除后仍保留该值以继续共享历史 |
 | files | id, blob, updatedAt | id 与 documents 一致；原始或生成 PDF 不可变，避免编辑破坏源文件 |
 | annotations | id, documentId, page, type, color, rects/points/x/y/text, selectedText?, fontSize?, strokeWidth?, shape?/start?/end?, deleted, recovered? | 下划线/删除线/高亮/新批注保存选区 rects；笔迹 points 与形状 start/end 使用归一化坐标；尺寸以 pt 保存；局部移除裁剪 rects，清空使用 tombstone |
 | conversations | id, rootId, title, createdAt, updatedAt | 逻辑文档下多条独立会话；原文和译文共享 |
 | messages | id, conversationId, role, content, status, error?, createdAt, updatedAt, recovered? | 用户先保存再请求；助手逐增量保存；不按轮数裁剪 |
 | translations | id, documentId, rootId, content, language, providerId, status, error?, output, generatedDocumentId? | 多次全文翻译记录及 PDF 产物关联 |
-| settings | id, value, updatedAt | `app` 存 API、翻译和 WebDAV；`workspace` 存标签、活动文档和各文档活动对话；`annotation-tools` 存 colors 和 noteSize/textSize/penWidth/shape 偏好 |
+| settings | id, value, updatedAt | `app` 存 API、翻译/WebDAV；`workspace` 存标签/当前对话；`annotation-tools` 存工具偏好；`library-view` 存当前目录、卡片/列表及排序 |
+| folders | id, parentId, name, createdAt, updatedAt | parentId 为空表示根目录，禁止自引用和循环，不以显示名称确定操作范围 |
+| deletions | id, store, key, documentId?/rootId?/conversationId?, updatedAt | 精确删除标记，id=`store-key`；只记录已删实体 ID 和所有者，不保存文件内容，不递归推导额外删除 |
 
 `status` 常见值：`streaming`、`complete`、`stopped`、`error`；从旧会话恢复的未完成 streaming 内容如实显示未完成，不在启动时批量篡改状态（避免影响另一个仍活动的窗口）。
 
@@ -113,12 +121,28 @@ pdf_translater/
 
 - `database()`：懒打开数据库，只在 upgrade 创建缺失结构；升级被其他窗口阻挡时发出事件。
 - `all(store)`、`get(store,id)`：读取记录。
-- `put(store,row)`：克隆对象、设置更新时间并等待事务提交。
+- `put(store,row)`：克隆、更新时间并等待事务；检查删除标记和批注/译文/会话/消息所有者仍存在，防止已删除内容被异步任务回填。
 - `patch(store,id,values)`：在同一事务里读取再合并，避免覆盖无关字段。
-- `addDocument(blob,name,pages,rootId?)`：文档 metadata 和文件 Blob 在同一事务写入。
+- `addDocument(blob,name,pages,rootId?,folderId?,sourceId?)`：metadata/Blob 同事务写入；目标目录必须存在，生成译文时从 sourceId 的最新记录继承逻辑组与原文目录，来源已删除则拒绝创建。
 - `snapshot()`：单个只读事务得到所有表的一致快照。
-- `mergeSnapshot(data,{restoreSettings})`：跨表原子合并，保留冲突内容；可选合并设置/API；错误回滚。
+- `mergeSnapshot(data,{restoreSettings,restoreDeleted})`：跨表原子合并，保留冲突内容，合并目录/精确删除标记；被动同步不复活已删除对象。主动本地导入可移除对应标记并用晚于删除的时间恢复记录。
+- `contextDocument(rootId,preferredId)`：优先原文，原文已删则选择当前或其他存活组成员，用于继续 AI 上下文。
+- `applyExactDeletions(tx)`（内部）：仅处理标记中准确的键和所有者；较新本地编辑阻止陈旧删除，仍存活组的数据保留；移除被拒绝的删除标记；修复缺失父目录和合并循环为根目录，不删除其中内容。
 - `requestPersistence()`：请求浏览器持久存储，返回实际授权结果，不承诺浏览器不会被主动清空。
+
+### library.js
+
+- `objectKey(kind,id)`：区分文档/文件夹选择键，避免跨类型 ID 混用。
+- `readLibrary()`：同一只读事务获取目录和文档的一致列表。
+- `validateFolderTree(folders)`：检查父目录存在和循环；不合法时中止操作。
+- `expandSelection(state,keys)`：仅展开明确选中文件夹的后代及明确选中文档，使用集合去重；不按 rootId 扩大下载/删除集合。
+- `sortLibraryObjects(objects,sort,direction)`：文件夹优先，组内按名称自然排序或 createdAt 正/倒序。
+- `createFolder(name,parentId)`：校验名称、父目录及同级同名冲突，再保存。
+- `moveSelection(keys,destination)`：单事务移动顶级选择、保持后代层级；阻止移入自己/后代；原文移动时其译文跟随原文目标目录，单独移动译文不反向移动原文。
+- `planDeletion(state,keys)`：生成要审核的文档/文件夹 ID、名称和完整显示路径清单。
+- `deleteSelection(plan)`：确认清单与执行时有效选区取交集，绝不纳入新后代；精确删 metadata/Blob/批注，仅无存活组成员时删共享会话、消息和全文历史；仍有成员则重绑必要引用；空目录逐层移除，非空目录保留；一个事务提交并写删除标记。
+- `downloadPlan(state,keys)`：选中文件夹包含自身/所有后代/空目录，文件不会隐式携带配对文档；超过两 PDF 或含文件夹则 ZIP；安全路径与重名序号防止丢文件。
+- `buildLibraryZip(plan)`：按计划读取原始 PDF Blob 生成 ZIP；任一选中文件缺失则报错，不静默漏掉内容。
 
 ### settings.js
 
@@ -219,11 +243,11 @@ pdf_translater/
 
 ### archive.js
 
-- `createArchive({includeSecrets,password})`：一致快照、二进制 PDF、SHA-256 清单、异步 ZIP；可剥除凭据和加密。
+- `createArchive({includeSecrets,password})`：一致快照、二进制 PDF、SHA-256 清单、异步 ZIP；格式版本 2 包含九表及目录/删除记录，可剥除凭据和加密。
 - `keyFor`、`encrypt`、`decrypt`（内部）：PBKDF2-SHA256 250000 次，AES-256-GCM；magic `PBRIDGE1` + 16 字节 salt + 12 字节 IV + 密文。
-- `readArchive(blob,password)`：解密、限制解压内存、检查格式版本、ID、安全字段、跨表引用、文件哈希和 PDF 头。
+- `readArchive(blob,password)`：接受格式 1/2，旧版新表补空；验证层级、删除记录所有者、逻辑组根锚点、跨表引用、文件哈希和 PDF 头，全部通过才允许合并。
 - 0.1.2 批注校验新增 strike、shape，校验形状枚举、起止点和可选字号/笔宽；兼容旧记录缺省字段。存档和数据库版本不变，新增记录应使用 0.1.2 或更新版本恢复。
-- `importArchive(blob,options)`：验证后事务合并；可恢复设置并刷新缓存。
+- `importArchive(blob,options)`：验证后事务合并；显式本地导入启用 restoreDeleted 恢复备份中存在的已删对象，可恢复设置并刷新缓存；被动云合并不启用此选项。
 - `importFritiaSettings(file)`：从 JSON 或原项目 ZIP 中查找旧设置字段，合并 provider，不修改来源文件。
 - `auth`、`remoteUrl`、`dav`（内部）：UTF-8 Basic Auth、安全 HTTP(S) 路径与超时请求。
 - `testWebDav(config)`：PROPFIND 检查实际浏览器跨域请求。
@@ -232,7 +256,21 @@ pdf_translater/
 
 ### utils.js
 
-`uid` 创建 UUID；`esc` 转义 HTML；`sizeLabel`、`dateLabel` 格式化展示；`download` 创建下载链接并延迟释放 Blob URL；`saveFile` 先校验非空 Blob，选择器不支持/调用条件不满足且未获取文件句柄时可退回普通下载，取消直接返回，写失败 abort 并抛错，绝不再次下载；`sha256` 算文件摘要；`bytesToBase64` 分块编码；`safeUrl` 只允许 HTTP(S) 且拒绝 URL 中嵌凭据；`errorMessage` 转换取消/超时/网络/接口异常。
+`uid` 创建 UUID；`esc` 转义 HTML；`sizeLabel`、`dateLabel` 格式化展示；`download` 创建下载链接并延迟释放 Blob URL；`sha256` 算文件摘要；`bytesToBase64` 分块编码；`safeUrl` 只允许 HTTP(S) 且拒绝 URL 中嵌凭据；`errorMessage` 转换取消/超时/网络/接口异常。
+
+- `chooseSaveTarget(filename,{directory})`：由点击处理同步进入原生选址，返回文件/目录句柄或取消 null；API 缺失/NotSupportedError 返回 defaultDownload 标记，不额外提示。SecurityError 不伪装成不支持，不静默重复下载。
+- `saveFile(blob,filename,{target})`：校验非空 Blob，写入已获取的句柄，或按 defaultDownload 下载到默认位置；没有预选目标时可获取一次。取消不下载，写失败 abort 并抛错，不重新选择或下载。
+
+### ui/library.js 的 LibraryView
+
+- `constructor/open/persist`：初始化目录、选择集合和视图/排序偏好，读取一致库状态，修复已不存在的当前目录为根目录；偏好保存在 settings/library-view。
+- `breadcrumbs`：以父 ID 链构建路径，防止循环。
+- `render/renderObjects/updateSelection`：页面骨架、文件夹优先的卡片/列表、左上选择框及批量按钮；切换目录/搜索清空选择，排序/视图切换保留选中 ID。
+- `action`：分发新建、视图、排序、移动、下载和删除。
+- `rename`：沿用文档重命名，并支持文件夹命名。
+- `move`：展示根目录和内部文件树，屏蔽选中文件夹及其后代作为目标；在当前目标内新建子目录，确认后调用 moveSelection。
+- `remove`：生成并展示删除对象路径清单；确认后等待受影响任务退出，执行精确事务，再协调工作区和重绘。
+- `download`：从缓存库状态立即生成选择计划并选址；单文件直接存、两文件共用目录、超过两文件/含目录用 ZIP；无选择器默认下载。保存目录内遇同名文件采用新序号，文件管理下载保持原始 PDF 行为。
 
 ### ui/components.js
 
@@ -258,6 +296,8 @@ pdf_translater/
 - `updateExportProgress()`：按 result-toolbar 的 translationId 读取转换互斥集合，设置打开/下载按钮的旋转图标、aria-busy 和禁用状态；转换的 try/finally 及历史切换均同步调用。
 - `createThread`：创建独立会话并保存当前会话选择。
 - `sendMessage`：先保存提问与回复占位，再组织完整文档及全部历史；每段流式先 patch，再更新当前匹配面板。
+- `stopForDeletion(plan)`：中止选中 PDF 的全文任务，以及无存活组成员的聊天任务，并等待完成信号；保留其他文档/组任务。
+- 原文物理记录删除后，问答通过 contextDocument 使用存活文件，完整历史仍按稳定 rootId 关联。下载结果时复用预选句柄，避免首次冷加载丢失用户点击授权。
 - `needsDocument`、`copy`、`speak`：空态、剪贴板、系统语音朗读辅助。
 
 ### main.js 的 App（主入口职责）
@@ -268,7 +308,7 @@ pdf_translater/
 | mount / bind / action | 生成静态界面骨架、委托动作、导入拖放、快捷键、尺寸变化 |
 | importFiles | 逐份校验加载 PDF，事务保存后打开；失败不产生半成品 |
 | importGenerated | 验证生成的 PDF，保存为共享原文 rootId 的新文档 |
-| openDocument / closeDocument | 处理并发打开序号、资源释放、历史切换；关闭只移除标签 |
+| openDocument / performOpenDocument / closeDocument | 进行中 Promise 锁定第一次切换，后续点击不打断；加载后复查存在性，关闭只移除标签 |
 | saveWorkspace | 保存标签、活动 PDF 和每个文档活动对话 |
 | renderTabs / renderToolbar / toolButton | 单行文件卡片、指定顺序的工具条、颜色和激活反馈 |
 | updateToolButtons | 依据选区规则同步多个按钮按下状态，不重建工具栏或打断选区 |
@@ -276,10 +316,11 @@ pdf_translater/
 | setTool / colorPicker / saveToolOptions | 选区动作或持续工具分发，颜色/形状与 pt 滑块浮层，保存后续工具偏好 |
 | changeZoom / setPage | 比例、跳页和延迟保存滚动位置 |
 | showReader / showSecondary | 工作区与管理页之间切换 |
-| showLibrary / showRecords | PDF 库搜索、重命名、原文件下载、全文翻译历史 |
+| showLibrary / showRecords | 委托 LibraryView 展示文件库；单独展示全文历史 |
 | documentText | 顺序提取全文，缓存最近一份文本并释放临时 PDF Worker |
-| downloadCurrent | 保存互斥和按钮禁用，原文件直接下载或加载导出模块写入批注，每次动作只保存一次 |
+| downloadCurrent | 点击后先选址，再读 Blob/懒加载导出模块；保存互斥，每次操作只保存一次 |
 | reload / refreshAssistant | 导入、设置、云同步后的界面刷新 |
+| prepareLibraryDeletion / afterLibraryDeletion | 等待文件切换和受影响生成任务；删除后清理已删对象的标签/缓存及失效工作区引用 |
 | updateSaved / setSyncStatus | 持久化提交及同步状态展示 |
 
 ### ui/pdf-navigation.js 的 PdfNavigation
@@ -299,7 +340,7 @@ pdf_translater/
 
 `initDesktopLayout()` 只在桌面启用分隔条 pointer/键盘交互，更新 `--reader-share`。
 
-`initMobileLayout({closeNavigation})` 管理视口高度、分屏状态和窄屏浮窗外点击关闭；底部功能导航保持。`setMobilePane(pane)` 切换阅读/助手，同时退出管理页，不改桌面列宽。
+`initMobileLayout({closeNavigation})` 管理视口、分屏和窄屏浮窗外点击；只给 `.mobile-nav` 的 pane 按钮绑定切换，避免 HTML 状态属性被误当按钮。`setMobilePane(pane)` 切换阅读/助手，不改桌面列宽。
 
 `data-pdf-nav` 存在时，桌面仍收窄功能侧栏并插入导航列；窄屏使用绝对定位浮窗，不显示左功能栏，不改变 PDF 宽度或 fit 比例。桌面查找列稍宽以容纳同一行筛选开关。
 
@@ -333,7 +374,11 @@ pdf_translater/
 | [data-select=chat-thread] / #chat-messages | 当前根文档的会话与全部消息 | Assistant.renderChat |
 | #chat-form / #chat-input | 问题输入、API 选择、发送和停止 | Assistant.sendMessage |
 | .message-thinking / [data-action=open-translated][aria-busy=true] | AI 首段回复前思考状态 / PDF 转换忙碌状态 | Assistant |
-| #library-view / #library-search / #document-grid | 文档网格和名称筛选 | App.showLibrary |
+| #library-view / #library-search / #document-grid | 当前目录卡片/列表、名称筛选 | LibraryView |
+| .library-check / .batch-actions | 多选及移动/下载/删除按钮 | LibraryView |
+| .library-breadcrumbs / .library-view-tools | 目录导航、排序方向/依据、视图切换 | LibraryView |
+| .folder-tree / .folder-create-row | 移动目标树和选中目录内创建子文件夹 | LibraryView.move |
+| .delete-object-list / [data-action=confirm-delete] | 已审核路径清单、明确确认入口 | LibraryView.remove |
 | .record-list / [data-record] | 打开对应 PDF 的全文历史 | App.showRecords |
 | #overlay-root / .modal | 通用焦点受控弹窗、设置、密码和批注输入 | components |
 | #settings-content / #provider-form | 多 API 配置及能力设置 | settings-panel |

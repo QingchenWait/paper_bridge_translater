@@ -2552,6 +2552,7 @@ img {
   gap: 1.3rem;
 }
 .library-card {
+  position: relative;
   background: #fff;
   border: 1px solid #e7e8f2;
   border-radius: 1rem;
@@ -2560,6 +2561,211 @@ img {
   transition:
     box-shadow 0.2s,
     transform 0.2s;
+}
+.library-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.batch-actions {
+  display: inline-flex;
+  gap: 0.45rem;
+}
+.batch-actions .danger,
+[data-action='confirm-delete'] {
+  background: #fff0f1;
+  color: #d25466;
+  border-color: #f1ccd2;
+}
+.library-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin: 0.8rem 0;
+  color: #9b93b0;
+  font-size: 0.8rem;
+}
+.library-breadcrumbs button {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.45rem;
+}
+.library-breadcrumbs button:hover {
+  background: #eee9fc;
+}
+.library-breadcrumbs > .icon {
+  width: 0.8rem;
+  height: 0.8rem;
+  opacity: 0.35;
+}
+.library-view-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.library-view-tools .custom-select {
+  width: 10rem;
+}
+.library-view-tools .segmented .icon-button {
+  padding: 0.45rem;
+}
+.library-selection-status {
+  font-size: 0.73rem;
+  color: #a299b3;
+  margin-bottom: 0.8rem;
+}
+.library-check {
+  position: absolute;
+  left: 0.65rem;
+  top: 0.65rem;
+  z-index: 2;
+  width: 1.7rem;
+  height: 1.7rem;
+  border: 1px solid #c8c3dc;
+  border-radius: 0.45rem;
+  background: #ffffffd9;
+  display: grid;
+  place-items: center;
+}
+.library-check[aria-checked='true'] {
+  background: #8371e8;
+  border-color: #8371e8;
+}
+.library-check .icon {
+  width: 1rem;
+  height: 1rem;
+  filter: brightness(0) invert(1);
+  opacity: 1;
+}
+.library-card.selected {
+  border-color: #ad9eea;
+  box-shadow: 0 0 0 2px #ebe6fb;
+}
+.folder-card .document-cover {
+  background: linear-gradient(140deg, #f4efff, #f2f5fc);
+}
+.folder-card .document-cover > .icon {
+  opacity: 0.4;
+}
+.document-grid.library-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.library-list .library-card {
+  display: flex;
+  align-items: center;
+  padding: 0.65rem 0.9rem;
+  gap: 0.9rem;
+}
+.library-list .library-check {
+  position: static;
+  flex: none;
+}
+.library-list .document-cover {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.55rem;
+  flex: none;
+}
+.library-list .document-cover > .icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+.library-list .document-cover > span,
+.library-list .document-cover > small {
+  display: none;
+}
+.library-list .library-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(10rem, auto);
+  align-items: center;
+  gap: 1rem;
+  padding: 0;
+  flex: 1;
+  min-width: 0;
+}
+.library-list .library-document-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.library-list .library-card-body > p {
+  margin: 0;
+  white-space: nowrap;
+}
+.library-list .library-card-body footer {
+  padding: 0;
+  border: 0;
+  gap: 0.8rem;
+}
+.folder-tree {
+  max-height: 24rem;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  padding: 0.5rem;
+  background: #fafaff;
+}
+.tree-folder,
+.tree-document {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.55rem 0.6rem 0.55rem calc(0.6rem + var(--depth, 0) * 1rem);
+  font-size: 0.82rem;
+  min-width: 0;
+  border-radius: 0.5rem;
+}
+.tree-folder.active {
+  background: #ede8ff;
+  color: #7660c8;
+}
+.tree-folder:hover:not(:disabled) {
+  background: #f0edfc;
+}
+.tree-document {
+  color: #a7a6b8;
+  font-size: 0.74rem;
+}
+.tree-document > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-document .icon {
+  width: 1rem;
+  height: 1rem;
+  opacity: 0.3;
+}
+.folder-create-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+.folder-create-row input {
+  min-width: 0;
+  flex: 1;
+}
+.delete-object-list {
+  max-height: 17rem;
+  overflow: auto;
+  font-size: 0.85rem;
+  line-height: 1.8;
+  padding-left: 1.3rem;
+  overflow-wrap: anywhere;
+}
+.document-tabs[aria-busy='true'] {
+  cursor: progress;
 }
 .library-card:hover {
   transform: translateY(-3px);

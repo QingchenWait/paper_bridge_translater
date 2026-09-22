@@ -1,10 +1,10 @@
-import { all, get, put, patch } from '../storage.js';
+import { all, get, put, patch, contextDocument } from '../storage.js';
 import { getSettings, saveSettings, getProvider } from '../settings.js';
 import { requestLlm } from '../llm.js';
 import { cleanPdfText, isSingleWord, CLEANING_INSTRUCTIONS } from '../text.js';
 import { lookupWord, onlineTranslate, LANGUAGES } from '../translation.js';
 import { mountMarkdown } from '../markdown.js';
-import { uid, esc, dateLabel, errorMessage, saveFile } from '../utils.js';
+import { uid, esc, dateLabel, errorMessage, chooseSaveTarget, saveFile } from '../utils.js';
 import {
   icon,
   button,
@@ -311,6 +311,9 @@ export class Assistant {
       throw new Error('当前 API 未启用原生 PDF 输出，请在 API 设置中确认能力，或选择本地排版。');
     const key = `full:${doc.id}`;
     if (this.jobs.has(key)) return;
+    const saveTarget =
+      output === 'pdf' ? await chooseSaveTarget(`${doc.name.replace(/\.pdf$/i, '')} · 译文.pdf`) : null;
+    if (output === 'pdf' && !saveTarget) return;
     const record = await put('translations', {
       id: uid(),
       documentId: doc.id,
@@ -322,7 +325,12 @@ export class Assistant {
       providerId: provider.id,
       output,
     });
-    const job = { record, controller: new AbortController(), stage: '读取 PDF' };
+    const job = {
+      record,
+      controller: new AbortController(),
+      stage: '读取 PDF',
+      done: Promise.withResolvers(),
+    };
     this.fullPanels.set(doc.id, { collapsed: false, autoCollapsed: false });
     this.jobs.set(key, job);
     await this.render();
@@ -372,7 +380,7 @@ export class Assistant {
       if (result.pdf) {
         const translated = await this.app.importGenerated(result.pdf, doc, record.id);
         record.generatedDocumentId = translated.id;
-        await saveFile(result.pdf, translated.name);
+        if (saveTarget) await saveFile(result.pdf, translated.name, { target: saveTarget });
       }
       record.status = 'complete';
       await patch('translations', record.id, {
@@ -382,7 +390,7 @@ export class Assistant {
       if (output === 'pdf' && !native && !result.pdf) {
         job.stage = '结果转换中';
         update();
-        await this.exportTranslation(record, false);
+        await this.exportTranslation(record, false, saveTarget);
       }
     } catch (error) {
       record.status = job.controller.signal.aborted ? 'stopped' : 'error';
@@ -394,6 +402,7 @@ export class Assistant {
       });
     } finally {
       this.jobs.delete(key);
+      job.done.resolve();
       if (this.app.activeId === doc.id && this.tab === 'full') await this.render();
       this.app.updateSaved();
     }
@@ -414,11 +423,16 @@ export class Assistant {
     toggle.setAttribute('aria-label', label);
     toggle.title = label;
   }
-  async exportTranslation(record, open) {
+  async exportTranslation(record, open, saveTarget) {
     if (this.exportingTranslations.has(record.id)) return;
     this.exportingTranslations.add(record.id);
     this.updateExportProgress();
     try {
+      if (!open && saveTarget === undefined) {
+        const doc = this.app.documents.find((d) => d.id === record.documentId);
+        saveTarget = await chooseSaveTarget(`${(doc?.name || 'PDF').replace(/\.pdf$/i, '')} · 译文.pdf`);
+        if (!saveTarget) return;
+      }
       let translated = record.generatedDocumentId ? await get('documents', record.generatedDocumentId) : null;
       if (!translated) {
         if (!record.content?.trim()) throw new Error('还没有可导出的译文');
@@ -431,7 +445,7 @@ export class Assistant {
         await patch('translations', record.id, { generatedDocumentId: translated.id });
       }
       if (open) await this.app.openDocument(translated.id);
-      else await saveFile((await get('files', translated.id)).blob, translated.name);
+      else await saveFile((await get('files', translated.id)).blob, translated.name, { target: saveTarget });
     } finally {
       this.exportingTranslations.delete(record.id);
       this.updateExportProgress();
@@ -553,7 +567,8 @@ export class Assistant {
     const key = `chat:${threadId}`;
     if (this.jobs.has(key)) return;
     const controller = new AbortController();
-    this.jobs.set(key, { controller });
+    const job = { controller, done: Promise.withResolvers() };
+    this.jobs.set(key, job);
     let reply;
     try {
       const previous = (await all('messages'))
@@ -582,7 +597,8 @@ export class Assistant {
       });
       input.value = '';
       await this.render();
-      const original = await get('documents', doc.rootId);
+      const original = await contextDocument(doc.rootId, doc.id);
+      if (!original) throw new Error('该文档组已删除');
       const file = await get('files', original.id);
       const text = provider.pdfInput ? '' : await this.app.documentText(original);
       if (!provider.pdfInput && text.replace(/\[第 \d+ 页\]/g, '').trim().length < 10)
@@ -636,9 +652,37 @@ export class Assistant {
       else throw error;
     } finally {
       this.jobs.delete(key);
+      job.done.resolve();
       if (this.tab === 'chat' && this.app.active?.rootId === doc.rootId) await this.render();
       this.app.updateSaved();
     }
+  }
+  async stopForDeletion(plan) {
+    const removed = new Set(plan.documentIds),
+      documents = await all('documents');
+    const deadRoots = new Set(
+      documents
+        .filter(
+          (d) =>
+            removed.has(d.id) &&
+            !documents.some((other) => other.rootId === d.rootId && !removed.has(other.id)),
+        )
+        .map((d) => d.rootId),
+    );
+    const threads = new Set(
+      (await all('conversations')).filter((c) => deadRoots.has(c.rootId)).map((c) => c.id),
+    );
+    const pending = [];
+    for (const [key, job] of this.jobs) {
+      if (
+        (key.startsWith('full:') && removed.has(key.slice(5))) ||
+        (key.startsWith('chat:') && threads.has(key.slice(5)))
+      ) {
+        job.controller.abort();
+        if (job.done) pending.push(job.done.promise);
+      }
+    }
+    await Promise.all(pending);
   }
   needsDocument(title, description) {
     return `<div class="assistant-empty"><div class="empty-orbit">${icon('file-text')}</div><h2>${title}</h2><p>${description}</p></div>`;

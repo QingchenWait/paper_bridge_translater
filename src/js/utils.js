@@ -19,30 +19,42 @@ export function download(blob, filename) {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
-export async function saveFile(blob, filename) {
-  if (!(blob instanceof Blob) || !blob.size) throw new Error('文件内容为空，未执行保存');
-  if (window.showSaveFilePicker) {
-    let handle;
-    try {
-      handle = await window.showSaveFilePicker({ suggestedName: filename });
-    } catch (error) {
-      if (error.name === 'AbortError') return;
-      if (!['SecurityError', 'NotSupportedError'].includes(error.name)) throw error;
-      download(blob, filename);
-      return;
-    }
-    let writer;
-    try {
-      writer = await handle.createWritable();
-      await writer.write(blob);
-      await writer.close();
-    } catch (error) {
-      await writer?.abort().catch(() => {});
-      throw new Error(`文件保存失败：${error.message}`);
-    }
-    return; // Never start a second download after opening a save picker.
+export async function chooseSaveTarget(filename, { directory = false } = {}) {
+  const picker = directory ? window.showDirectoryPicker : window.showSaveFilePicker;
+  if (typeof picker !== 'function') return { defaultDownload: true };
+  try {
+    return await picker.call(
+      window,
+      directory
+        ? { mode: 'readwrite' }
+        : { suggestedName: String(filename).replace(/[\\/<>:"|?*\u0000-\u001f]/g, '_') },
+    );
+  } catch (error) {
+    if (error.name === 'AbortError') return null;
+    if (error.name === 'NotSupportedError') return { defaultDownload: true };
+    if (error.name === 'SecurityError')
+      throw new Error('未获得选择保存位置的点击授权，请重新点击下载按钮；文件未下载。');
+    throw error;
   }
-  download(blob, filename);
+}
+export async function saveFile(blob, filename, { target } = {}) {
+  if (!(blob instanceof Blob) || !blob.size) throw new Error('文件内容为空，未执行保存');
+  const handle = target === undefined ? await chooseSaveTarget(filename) : target;
+  if (!handle) return;
+  if (handle.defaultDownload) {
+    download(blob, filename);
+    return;
+  }
+  let writer;
+  try {
+    writer = await handle.createWritable();
+    await writer.write(blob);
+    await writer.close();
+  } catch (error) {
+    await writer?.abort().catch(() => {});
+    throw new Error(`文件保存失败：${error.message}`);
+  }
+  return;
 }
 export async function sha256(bytes) {
   const digest = await crypto.subtle.digest('SHA-256', bytes);

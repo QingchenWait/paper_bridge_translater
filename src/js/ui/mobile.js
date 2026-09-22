@@ -24,7 +24,7 @@ export function initMobileLayout({ closeNavigation = () => {} } = {}) {
     true,
   );
   document
-    .querySelectorAll('[data-mobile-pane]')
+    .querySelectorAll('.mobile-nav [data-mobile-pane]')
     .forEach((button) => button.addEventListener('click', () => setMobilePane(button.dataset.mobilePane)));
   // Stay on the reader after selecting: annotation actions need the same range.
   const viewport = () =>
@@ -41,7 +41,7 @@ export function setMobilePane(pane) {
   document.documentElement.dataset.view = 'reader';
   document.documentElement.dataset.mobilePane = pane;
   document
-    .querySelectorAll('[data-mobile-pane]')
+    .querySelectorAll('.mobile-nav [data-mobile-pane]')
     .forEach((button) => button.classList.toggle('active', button.dataset.mobilePane === pane));
   if (pane === 'reader') document.dispatchEvent(new Event('reader-resize'));
 }
