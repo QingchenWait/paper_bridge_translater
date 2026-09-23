@@ -4,7 +4,7 @@ import { zip, unzipSync, strToU8, strFromU8 } from 'fflate';
 import { snapshot, mergeSnapshot, get, STORES } from './storage.js';
 import { validateFolderTree } from './library.js';
 import { sha256, safeUrl, bytesToBase64 } from './utils.js';
-import { getSettings, saveSettings, reloadSettings } from './settings.js';
+import { getSettings, saveSettings, reloadSettings, flushSettings } from './settings.js';
 const MAGIC = strToU8('PBRIDGE1');
 const MAX_ARCHIVE = 1024 * 1024 * 1024;
 function makeZip(files) {
@@ -13,6 +13,7 @@ function makeZip(files) {
   );
 }
 export async function createArchive({ includeSecrets = true, password = '' } = {}) {
+  await flushSettings();
   const data = await snapshot();
   const entries = {};
   const digests = {};

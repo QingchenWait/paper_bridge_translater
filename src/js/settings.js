@@ -3,7 +3,7 @@ import { get, put } from './storage.js';
 import { normalizeBasicTranslation } from './basic-translation.js';
 export { PROVIDERS } from './providers.js';
 export function normalizeSettings(raw = {}) {
-  const source = raw.chatProviders?.length
+  const source = Array.isArray(raw.chatProviders)
     ? raw.chatProviders
     : raw.baseUrl
       ? [{ id: 'imported', ...raw }]
@@ -58,6 +58,7 @@ export function normalizeSettings(raw = {}) {
   };
 }
 let settings;
+let settingsSave = Promise.resolve();
 export async function getSettings() {
   return (settings ||= normalizeSettings((await get('settings', 'app'))?.value));
 }
@@ -65,26 +66,28 @@ export async function reloadSettings() {
   settings = null;
   return getSettings();
 }
-export async function saveSettings(next) {
-  const normalized = normalizeSettings({ ...(await getSettings()), ...next });
-  await put('settings', { id: 'app', value: normalized });
-  settings = normalized;
-  document.dispatchEvent(new CustomEvent('settings-changed', { detail: normalized }));
-  return normalized;
-}
-let basicSave = Promise.resolve();
-export function saveBasicTranslation(update, preferences = {}) {
-  const pending = basicSave
+export function saveSettings(next) {
+  // Capture input now; serialize every settings writer against the latest commit.
+  const update = typeof next === 'function' ? next : structuredClone(next);
+  const pending = settingsSave
     .catch(() => {})
     .then(async () => {
       const current = await getSettings();
-      return saveSettings({
-        ...preferences,
-        basicTranslation: update(structuredClone(current.basicTranslation)),
-      });
+      const patch = typeof update === 'function' ? update(structuredClone(current)) : update;
+      const normalized = normalizeSettings({ ...current, ...patch });
+      await put('settings', { id: 'app', value: normalized });
+      settings = normalized;
+      document.dispatchEvent(new CustomEvent('settings-changed', { detail: normalized }));
+      return normalized;
     });
-  basicSave = pending;
+  settingsSave = pending;
   return pending;
+}
+export function flushSettings() {
+  return settingsSave;
+}
+export function saveBasicTranslation(update, preferences = {}) {
+  return saveSettings((current) => ({ ...preferences, basicTranslation: update(current.basicTranslation) }));
 }
 export function getProvider(settings, id = settings.defaultChatProviderId) {
   const provider = settings.chatProviders.find((p) => p.id === id);

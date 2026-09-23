@@ -33,7 +33,7 @@ async function fixture(name = 'Research Paper.pdf') {
 async function setup(page) {
   await page.goto('/');
   await page.getByRole('checkbox', { name: '不再显示', exact: true }).check();
-  await page.getByRole('button', { name: '先使用在线翻译' }).click();
+  await page.getByRole('button', { name: '直接进入 APP' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 async function importPdf(page, name) {
@@ -380,7 +380,7 @@ test('encrypted archive restores documents, annotations and full conversations i
   const other = await context.newPage();
   await other.goto(new URL(page.url()).origin);
   await other.getByRole('checkbox', { name: '不再显示', exact: true }).check();
-  await other.getByRole('button', { name: '先使用在线翻译' }).click();
+  await other.getByRole('button', { name: '直接进入 APP' }).click();
   await expect(other.getByRole('dialog')).toHaveCount(0);
   const restored = await other.evaluate(async (data) => {
     const { importArchive } = await import('/src/js/archive.js');

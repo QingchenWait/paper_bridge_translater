@@ -10,7 +10,7 @@ async function file(name) {
 async function setup(page, names = ['Original.pdf', 'Translated.pdf', 'Other.pdf']) {
   await page.goto('/');
   await page.getByRole('checkbox', { name: '不再显示', exact: true }).check();
-  await page.getByRole('button', { name: '先使用在线翻译' }).click();
+  await page.getByRole('button', { name: '直接进入 APP' }).click();
   await page.locator('#pdf-input').setInputFiles(await Promise.all(names.map(file)));
   await expect(page.locator('.document-tab')).toHaveCount(names.length);
   await expect(page.locator('#document-tabs')).toHaveAttribute('aria-busy', 'false');

@@ -1,6 +1,6 @@
 # 项目结构与开发逻辑
 
-适用版本：0.3.0。入口为 `index.html` → `src/js/main.js`。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
+适用版本：0.3.0（包含本轮同版本自动保存/启动页修订）。入口为 `index.html` → `src/js/main.js`。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
 
 ## 文件树
 
@@ -79,6 +79,7 @@ pdf_translater/
 │  ├─ core.test.mjs                数据、清洗、SSE 和存档协议测试
 │  ├─ providers.test.mjs           模板、可信官网映射、原配置保留与原生桥接测试
 │  ├─ basic-translation.test.mjs   三家签名、响应、分段/取消、凭据存档和并发保存
+│  ├─ settings-persistence.test.mjs 自动保存交错写入、完整设置备份、清空 API 防复活
 │  ├─ selection-actions.test.mjs   选区规则、多类型/多页与局部清除测试
 │  ├─ save-file.test.mjs           单次保存、取消和写失败不重复下载测试
 │  ├─ shapes.test.mjs              形状几何、删除线及字号规则测试
@@ -90,7 +91,8 @@ pdf_translater/
 │     ├─ reader-refinements.spec.js 字形坐标、旋转/裁切、高 DPI、拖动/历史及搜索浮窗
 │     ├─ library.spec.js           文档库交互、共享历史、下载、切换锁和无损升级
 │     ├─ editing-settings.spec.js  编辑导出回读、选词/绘图手势、引导/API 设置回归
-│     └─ basic-translation.spec.js 基础设置/教程/默认引擎、JSONP 和阅读区路由
+│     ├─ basic-translation.spec.js 基础设置/教程/默认引擎、JSONP 和阅读区路由
+│     └─ settings-autosave.spec.js 自动保存、即时备份、动画速度、桌面/手机启动页
 ├─ dist/                           构建产物，不手工编辑
 ├─ node_modules/                   npm 依赖，不手工编辑
 ├─ .cache/                         npm 缓存、开发期官方文档，不进入发布
@@ -162,8 +164,10 @@ pdf_translater/
 - `normalizeSettings(raw)`：兼容海姆休息室单 API 和多 API 格式；规范化 URL、去重 provider ID、同步默认三字段。
 - `translationProviderId`：划词/句子翻译专用 API 偏好；旧数据缺省取默认 API，不修改 `defaultChatProviderId`。
 - `getSettings()`、`reloadSettings()`：读取/重载配置缓存。
-- `saveSettings(next)`：先提交存储再更新缓存和派发 `settings-changed`。
-- `saveBasicTranslation(update,preferences?)`：串行读取最新 basicTranslation 后合并单项凭据/默认值，避免多家配置并发保存互相覆盖；阅读区基础引擎选择复用此入口，可同时保存风格等偏好。
+- `saveSettings(nextOrUpdater)`：所有设置共用串行队列；对象入队时深拷贝，函数按执行时最新配置计算补丁，避免 LLM/基础/引导等交错写入丢字段；提交存储后更新缓存、派发 settings-changed。失败不阻断之后重试。
+- `flushSettings()`：返回当前保存队列完成 Promise；备份在 snapshot 前等待它，避免漏掉最后一笔自动保存。
+- normalizeSettings 将显式 chatProviders=[] 视为清空；仅字段不存在时兼容旧单 API，避免删除最后一项后被旧 baseUrl/apiKey 别名重新创建。
+- `saveBasicTranslation(update,preferences?)`：委托全局设置队列读取最新 basicTranslation 后合并单项凭据/默认值，避免多家配置并发保存互相覆盖；阅读区基础引擎选择复用此入口，可同时保存风格等偏好。
 - `getProvider(settings,id?)`：选择 API，缺少地址或模型时给出明确错误。
 
 ### providers.js / document-download.js
@@ -281,7 +285,7 @@ pdf_translater/
 
 ### archive.js
 
-- `createArchive({includeSecrets,password})`：一致快照、二进制 PDF、SHA-256 清单、异步 ZIP；格式版本 2 包含九表及目录/删除记录，可剥除凭据和加密。includeSecrets=false 时也清空全部基础翻译 keyId/secret/连接状态；现有云同步同样不携带它们。
+- `createArchive({includeSecrets,password})`：先等待 flushSettings，再创建一致快照、二进制 PDF、SHA-256 清单、异步 ZIP；格式版本 2 包含九表及目录/删除记录，可剥除凭据和加密。includeSecrets=false 时也清空全部基础翻译 keyId/secret/连接状态；现有云同步同样不携带它们。
 - `keyFor`、`encrypt`、`decrypt`（内部）：PBKDF2-SHA256 250000 次，AES-256-GCM；magic `PBRIDGE1` + 16 字节 salt + 12 字节 IV + 密文。
 - `readArchive(blob,password)`：接受格式 1/2，旧版新表补空；验证层级、删除记录所有者、逻辑组根锚点、跨表引用、文件哈希和 PDF 头，全部通过才允许合并。
 - 0.1.2 批注校验新增 strike、shape，校验形状枚举、起止点和可选字号/笔宽；兼容旧记录缺省字段。存档和数据库版本不变，新增记录应使用 0.1.2 或更新版本恢复。
@@ -318,18 +322,20 @@ pdf_translater/
 
 ### ui/basic-settings.js
 
-- `BasicSettings`：render 生成标题、默认模型、三个默认折叠栏目与教程；section 定位配置，capture 保留未保存输入，bindDefault/updateDefault 绑定自绘下拉并只列出已保存完整配置。
+- `BasicSettings`：render 生成标题、默认模型、三个默认折叠栏目与教程；section 定位配置，capture 读取表单输入，bindDefault/updateDefault 绑定自绘下拉并只列出已保存完整配置。
 - `status`：未配置/未测试/测试中/可连接/连接失败，成功为绿点，tooltip 提供测试时间及百度风格。
-- `test`：短句 en→zh-CN 按当前风格验证，按钮旋转等待；凭据变化递增 revision 并 abort，过期成功不覆盖当前状态；测试本身不保存账号。
-- `save`：串行合并当前服务配置，不覆盖其他服务或 LLM；更新可选项并提示保存成功。
-- `destroy`：保存本次弹窗草稿、取消全部在途测试，在换子页或关闭设置时调用。
+- `test`：短句 en→zh-CN 按当前风格验证，按钮旋转等待；凭据变化递增 revision 并 abort，过期成功不覆盖当前状态；输入实时保存账号，测试完成后静默保存有效状态/时间。
+- `save(id,silent=false)`：输入/change 和测试状态变化调用 silent=true，按 lastQueued 签名去重、捕获当前不可变值并入队，不弹成功提示；手动保存仍反馈成功。仅选项发生变化才重绘默认选择器，保持用户正在操作的下拉状态。
+- `destroy`：捕获并静默保存最后输入，取消全部在途测试，设置 destroyed 标记防止旧回调更新新页面，返回当前写入完成 Promise。
 - 教程链接委托 openExternalWebsite，新标签或宿主系统浏览器；密钥眼睛按钮仅切换 input.type。
 
 ### ui/settings-panel.js
 
 - `providerMenu()`：复用 custom-select 的自绘服务商菜单、逐行厂商 LOGO，选择后 capture 现有草稿再追加新配置。
-- `openSettings(app,tab)`：API、基础翻译、备份、WebDAV、帮助五视图；API 草稿只在保存后持久化；眼睛按钮仅切换输入类型，获取按钮监听当前 URL 输入并在点击时重读；测试不覆盖设置。
-- `onboarding(app)`：hideOnboarding 为 false 时，每次欢迎→选择服务→填地址/Key/模型→测试→保存；也可先使用免费翻译。独立自绘“不再显示”开关跨步骤保留且持久化，不改变旧 API 配置。
+- `openSettings(app,tab)`：API、基础翻译、备份、WebDAV、帮助五视图；新增、填写、选择协议/能力/默认、移除均自动持久化；眼睛按钮仅切换输入类型，获取按钮监听当前 URL 输入并在点击时重读；测试不覆盖设置。
+- `persistApi` / `autoSaveApi`（openSettings 内部）：capture 从当前表单自身读取协议和字段，使用 apiSnapshot 去重并调用串行 saveSettings；同步配置卡片名称，不重绘输入框。切换子页、配置及关闭窗口均捕获最后输入，自动保存只在失败时报告。
+- `saveApi(close)`：顶部“保存当前设置”传 false，底部“保存设置”传 true，均等待真实落盘，前者保持窗口。
+- `onboarding(app)`：hideOnboarding 为 false 时显示欢迎→服务商→配置流程，主标题为“纸间 · 文献翻译 & AI 分析”，作者链接通过 openExternalWebsite 打开；“直接进入 APP”与配置按钮居中，偏好开关右下角，新增右上角关闭按钮。关闭本次引导不等于不再显示，只有显式开关控制后续弹出。
 
 ### ui/assistant.js 的 Assistant
 
@@ -435,7 +441,10 @@ pdf_translater/
 | [data-basic-form] / [data-action=test-basic] / [data-action=show-basic-secret] | 账号/密钥、连接测试、保存及可见性 | BasicSettings.test/save |
 | #cloud-form | WebDAV 账号、测试、同步和开关 | settings-panel / archive |
 | #archive-input | 本地 ZIP / 加密存档选择 | settings-panel / archive |
-| #onboarding-content / #onboarding-form / [name=hideOnboarding] | 启动引导步骤及“不再显示”开关 | onboarding |
+| #onboarding-content / #onboarding-form / [name=hideOnboarding] | 启动引导步骤、右下角“不再显示”开关及标准关闭按钮 | onboarding |
+| .welcome-actions / [data-author-link] | 居中进入按钮、Bilibili 作者新标签链接 | onboarding / openExternalWebsite |
+| [data-action=save-current-settings] / .api-heading-actions | “添加”左侧保存当前配置并保留窗口 | saveApi(false) |
+| .spinner / .icon-spin / --loading-spin-duration | 统一 1.2s 旋转；减少动态效果下 1.8s，避免 0.01ms 无限循环 | base.css |
 | [data-select=provider-preset] / [data-action=add-provider] | 添加按钮下方的八种厂商模板菜单 | providerMenu / openSettings |
 | #provider-api-key / [data-action=toggle-api-key] / [data-action=get-api-key] | Key 隐藏/显示、按当前 Base URL 打开官网 | openSettings / openProviderWebsite |
 | #pdf-scroll.selecting-text | 鼠标/触控取词期间禁止覆盖元素交互 | PdfViewer.releaseTextSelection |

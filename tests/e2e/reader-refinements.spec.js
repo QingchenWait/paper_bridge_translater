@@ -36,7 +36,7 @@ async function fixture() {
 async function setup(page) {
   await page.goto('/');
   await page.getByRole('checkbox', { name: '不再显示', exact: true }).check();
-  await page.getByRole('button', { name: '先使用在线翻译' }).click();
+  await page.getByRole('button', { name: '直接进入 APP' }).click();
   const document = await fixture();
   await page.locator('#pdf-input').setInputFiles(document.file);
   await expect(page.locator('.pdf-page[data-page="1"] .textLayer span').first()).toBeVisible();
@@ -333,7 +333,7 @@ test('embedded Chinese fonts and high-DPI text layers use the same glyph advance
   try {
     await page.goto(baseURL);
     await page.getByRole('checkbox', { name: '不再显示', exact: true }).check();
-    await page.getByRole('button', { name: '先使用在线翻译' }).click();
+    await page.getByRole('button', { name: '直接进入 APP' }).click();
     await page.locator('#pdf-input').setInputFiles({
       name: 'Chinese.pdf',
       mimeType: 'application/pdf',

@@ -1,5 +1,5 @@
 import { BASIC_APIS, basicOptions, basicConfigured, basicTranslate } from '../basic-translation.js';
-import { getSettings, saveBasicTranslation } from '../settings.js';
+import { getSettings, saveBasicTranslation, flushSettings } from '../settings.js';
 import { openExternalWebsite } from '../providers.js';
 import { esc, errorMessage } from '../utils.js';
 import { icon, button, iconButton, select, bindSelects, toast } from './components.js';
@@ -20,6 +20,8 @@ export class BasicSettings {
     this.onSaved = onSaved;
     this.jobs = new Map();
     this.revisions = new Map();
+    this.lastQueued = new Map(BASIC_APIS.map(({ id }) => [id, JSON.stringify(draft.providers[id])]));
+    this.destroyed = false;
   }
   render() {
     this.root.innerHTML = `<div class="basic-settings"><div class="section-heading"><div><h3>基础翻译功能</h3><p>管理无需调用 LLM 的在线翻译服务。</p></div></div><div class="field basic-default"><span>默认基础翻译模型</span>${select('basic-default', basicOptions(this.saved), this.saved.defaultProvider, '默认基础翻译模型')}</div><div class="basic-providers">${BASIC_APIS.map(
@@ -63,8 +65,10 @@ export class BasicSettings {
         this.draft.providers[p.id].connection = null;
         this.revisions.set(p.id, (this.revisions.get(p.id) || 0) + 1);
         this.status(p.id);
-        section.querySelector('.basic-test-detail').textContent = '配置已修改，请重新测试并保存。';
+        section.querySelector('.basic-test-detail').textContent = '配置已修改，请重新测试。';
+        this.save(p.id, true);
       };
+      form.addEventListener('change', () => this.save(p.id, true));
       section.querySelector('[data-action="test-basic"]').onclick = () => this.test(p.id);
       form.onsubmit = (event) => {
         event.preventDefault();
@@ -113,7 +117,18 @@ export class BasicSettings {
   updateDefault() {
     const root = this.root.querySelector('.basic-default');
     if (!root) return;
-    root.innerHTML = `<span>默认基础翻译模型</span>${select('basic-default', basicOptions(this.saved), this.saved.defaultProvider, '默认基础翻译模型')}`;
+    const options = basicOptions(this.saved);
+    const current = root.querySelector('[data-select="basic-default"]');
+    const rendered = [...root.querySelectorAll('[role="option"]')].map((option) => [
+      option.dataset.value,
+      option.textContent,
+    ]);
+    if (
+      current?.dataset.value === this.saved.defaultProvider &&
+      JSON.stringify(rendered) === JSON.stringify(options)
+    )
+      return;
+    root.innerHTML = `<span>默认基础翻译模型</span>${select('basic-default', options, this.saved.defaultProvider, '默认基础翻译模型')}`;
     this.bindDefault();
   }
   status(id, error = false) {
@@ -142,6 +157,7 @@ export class BasicSettings {
     this.jobs.set(id, controller);
     this.draft.providers[id].connection = null;
     this.status(id);
+    this.save(id, true);
     section.querySelector('.basic-test-detail').textContent = '正在验证翻译连接…';
     try {
       const style = (await getSettings()).translationStyle;
@@ -155,7 +171,7 @@ export class BasicSettings {
       });
       if (controller.signal.aborted || revision !== (this.revisions.get(id) || 0)) return;
       this.draft.providers[id].connection = { ok: true, checkedAt: Date.now(), style };
-      section.querySelector('.basic-test-detail').textContent = `连接成功：${result}。请点击“保存配置”。`;
+      section.querySelector('.basic-test-detail').textContent = `连接成功：${result}。`;
     } catch (error) {
       if (!controller.signal.aborted) {
         section.querySelector('.basic-test-detail').textContent = errorMessage(error);
@@ -165,33 +181,49 @@ export class BasicSettings {
       if (this.jobs.get(id) === controller) {
         this.jobs.delete(id);
         this.status(id, !this.draft.providers[id].connection);
+        this.save(id, true);
       }
     }
   }
-  async save(id) {
+  async save(id, silent = false) {
     this.capture(id);
-    const button = this.section(id).querySelector('[type="submit"]');
-    button.disabled = true;
+    const button = this.section(id)?.querySelector('[type="submit"]');
+    if (button && !silent) button.disabled = true;
+    const config = structuredClone(this.draft.providers[id]);
+    const snapshot = JSON.stringify(config);
     try {
-      const config = structuredClone(this.draft.providers[id]);
-      const saved = await saveBasicTranslation((current) => ({
-        ...current,
-        providers: { ...current.providers, [id]: config },
-      }));
+      let saved;
+      if (snapshot === this.lastQueued.get(id)) {
+        await flushSettings();
+        if (silent) return;
+        saved = await getSettings();
+      } else {
+        this.lastQueued.set(id, snapshot);
+        saved = await saveBasicTranslation((current) => ({
+          ...current,
+          providers: { ...current.providers, [id]: config },
+        }));
+      }
       this.saved = saved.basicTranslation;
       this.draft.defaultProvider = this.saved.defaultProvider;
-      this.updateDefault();
-      this.onSaved();
-      toast('基础翻译配置已保存');
+      if (!this.destroyed) this.updateDefault();
+      if (!silent) {
+        this.onSaved();
+        toast('基础翻译配置已保存');
+      }
     } catch (error) {
+      if (this.lastQueued.get(id) === snapshot) this.lastQueued.delete(id);
       toast(errorMessage(error), 'error');
     } finally {
-      button.disabled = false;
+      if (button && !silent) button.disabled = this.jobs.has(id);
     }
   }
   destroy() {
     this.capture();
+    this.destroyed = true;
+    for (const { id } of BASIC_APIS) this.save(id, true);
     for (const job of this.jobs.values()) job.abort();
     this.jobs.clear();
+    return flushSettings();
   }
 }

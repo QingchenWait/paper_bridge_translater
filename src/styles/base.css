@@ -27,6 +27,7 @@
   --shadow-floating: 0 1.3rem 4rem #3446801f;
   --reader-share: 61%;
   --viewport-height: 100dvh;
+  --loading-spin-duration: 1.2s;
 }
 * {
   box-sizing: border-box;
@@ -1250,7 +1251,7 @@ img {
   border-top-color: #7364e9;
   border-right-color: #8b88f1;
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  animation: spin var(--loading-spin-duration) linear infinite;
   flex: none;
 }
 .spinner.small {
@@ -1438,6 +1439,40 @@ img {
 }
 .onboarding-preference {
   margin-top: 1rem;
+}
+.toggle-row.onboarding-preference {
+  width: max-content;
+  max-width: 100%;
+  margin: 1.1rem 0 0 auto;
+  justify-content: flex-end;
+  gap: 0.8rem;
+}
+.toggle-row.onboarding-preference > span:first-child {
+  flex: none;
+}
+.api-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: none;
+}
+.api-heading-actions > .button {
+  font-size: 0.78rem;
+  padding-inline: 0.75rem;
+}
+.welcome-actions {
+  justify-content: center;
+}
+.onboarding-modal .welcome > p:not(.eyebrow) {
+  line-height: 1.8;
+}
+.onboarding-modal [data-author-link] {
+  color: inherit;
+  text-underline-offset: 0.2em;
+}
+.onboarding-modal [data-author-link]:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
 }
 .modal-actions,
 .form-actions {
@@ -2453,7 +2488,7 @@ img {
   font-size: 0.85rem;
 }
 .icon-spin {
-  animation: spin 0.85s linear infinite;
+  animation: spin var(--loading-spin-duration) linear infinite;
 }
 .icon-button[aria-busy='true'] {
   opacity: 1;
@@ -3055,7 +3090,13 @@ img {
   *:before,
   *:after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+  .spinner,
+  .icon-spin {
+    animation-duration: 1.8s !important;
+    animation-iteration-count: infinite !important;
   }
 }

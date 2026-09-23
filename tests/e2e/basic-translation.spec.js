@@ -5,7 +5,7 @@ async function setup(page, mobile = false) {
   if (mobile) await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   await page.getByRole('checkbox', { name: '不再显示', exact: true }).check();
-  await page.getByRole('button', { name: '先使用在线翻译' }).click();
+  await page.getByRole('button', { name: '直接进入 APP' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 async function openBasic(page, mobile = false) {
@@ -154,7 +154,7 @@ test('testing shows progress, credential edits cancel stale tests, failures neve
       async () =>
         (await (await import('/src/js/settings.js')).getSettings()).basicTranslation.providers.aliyun.secret,
     ),
-  ).toBe('');
+  ).toBe('new-secret');
 });
 
 async function importPdf(page) {

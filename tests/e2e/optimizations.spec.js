@@ -40,7 +40,7 @@ async function fixture(name = 'Navigation.pdf', outline = true) {
 async function setup(page) {
   await page.goto('/');
   await page.getByRole('checkbox', { name: '不再显示', exact: true }).check();
-  await page.getByRole('button', { name: '先使用在线翻译' }).click();
+  await page.getByRole('button', { name: '直接进入 APP' }).click();
   await page.route('https://api.mymemory.translated.net/**', (route) =>
     route.fulfill({
       json: { responseStatus: 200, responseData: { translatedText: '选择这些文字进行翻译。' } },

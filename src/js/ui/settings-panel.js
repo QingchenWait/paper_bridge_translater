@@ -1,8 +1,8 @@
-import { getSettings, saveSettings, PROVIDERS } from '../settings.js';
+import { getSettings, saveSettings, flushSettings, PROVIDERS } from '../settings.js';
 import { uid, esc, chooseSaveTarget, saveFile, dateLabel, errorMessage } from '../utils.js';
 import { createArchive, importArchive, importFritiaSettings, syncWebDav, testWebDav } from '../archive.js';
 import { testProvider, listModels } from '../llm.js';
-import { providerKeyUrl, openProviderWebsite } from '../providers.js';
+import { providerKeyUrl, openProviderWebsite, openExternalWebsite } from '../providers.js';
 import { BasicSettings } from './basic-settings.js';
 import {
   icon,
@@ -23,10 +23,23 @@ export async function openSettings(app, tab = 'api') {
   let draft = structuredClone(settings);
   let basicPage;
   let activeProvider = draft.defaultChatProviderId || draft.chatProviders[0]?.id;
+  const apiSnapshot = () =>
+    JSON.stringify({
+      chatProviders: draft.chatProviders,
+      defaultChatProviderId: draft.defaultChatProviderId,
+    });
+  let lastApiSnapshot = apiSnapshot();
   const dialog = modal(
     '设置',
     `<div class="settings-layout"><nav class="settings-nav">${button('settings-api', 'bot', '模型与 API', tab === 'api' ? 'active' : '')}${button('settings-basic', 'languages', '基础翻译功能', tab === 'basic' ? 'active' : '')}${button('settings-archive', 'database', '备份与存档', tab === 'archive' ? 'active' : '')}${button('settings-cloud', 'cloud', '云同步', tab === 'cloud' ? 'active' : '')}${button('settings-about', 'circle-help', '关于与帮助', tab === 'about' ? 'active' : '')}</nav><div id="settings-content"></div></div>`,
-    { wide: true, onClose: () => basicPage?.destroy() },
+    {
+      wide: true,
+      onClose: () => {
+        Promise.all([persistApi(), basicPage?.destroy()])
+          .then(() => app.refreshAssistant())
+          .catch((error) => toast(errorMessage(error), 'error'));
+      },
+    },
   );
   const content = dialog.element.querySelector('#settings-content');
   const run = (fn) => async (event) => {
@@ -48,20 +61,39 @@ export async function openSettings(app, tab = 'api') {
     const provider = draft.chatProviders.find((p) => p.id === activeProvider);
     if (provider)
       Object.assign(provider, data, {
-        protocol: selected('api-protocol'),
+        protocol: form.querySelector('[data-select="api-protocol"]')?.dataset.value || provider.protocol,
         pdfInput: form.elements.pdfInput.checked,
         pdfOutput: form.elements.pdfOutput.checked,
       });
   };
+  const persistApi = () => {
+    capture();
+    content.querySelectorAll('[data-provider]').forEach((chip) => {
+      const provider = draft.chatProviders.find((p) => p.id === chip.dataset.provider);
+      const label = chip.querySelector('.provider-label');
+      if (label && provider) label.textContent = provider.name;
+    });
+    const snapshot = apiSnapshot();
+    if (snapshot === lastApiSnapshot) return flushSettings();
+    lastApiSnapshot = snapshot;
+    return saveSettings({
+      chatProviders: draft.chatProviders,
+      defaultChatProviderId: draft.defaultChatProviderId,
+    }).catch((error) => {
+      if (lastApiSnapshot === snapshot) lastApiSnapshot = null;
+      throw error;
+    });
+  };
+  const autoSaveApi = () => persistApi().catch((error) => toast(errorMessage(error), 'error'));
   const render = () => {
-    basicPage?.destroy();
+    basicPage?.destroy().catch(() => {}); // Each autosave already reports a failed write.
     basicPage = null;
     dialog.element
       .querySelectorAll('.settings-nav button')
       .forEach((btn) => btn.classList.toggle('active', btn.dataset.action === `settings-${tab}`));
     if (tab === 'api') {
       const provider = draft.chatProviders.find((p) => p.id === activeProvider);
-      content.innerHTML = `<div class="section-heading"><div><h3>连接你的 AI</h3><p>保留多组配置，随时切换适合的模型。</p></div>${providerMenu()}</div><div class="provider-chips">${draft.chatProviders.map((p) => `<button class="provider-chip ${p.id === activeProvider ? 'active' : ''}" data-provider="${esc(p.id)}">${icon('bot')}${esc(p.name)}${p.id === draft.defaultChatProviderId ? '<span class="badge">默认</span>' : ''}</button>`).join('')}</div>${
+      content.innerHTML = `<div class="section-heading"><div><h3>连接你的 AI</h3><p>保留多组配置，随时切换适合的模型。</p></div><div class="api-heading-actions">${button('save-current-settings', 'check', '保存当前设置')}${providerMenu()}</div></div><div class="provider-chips">${draft.chatProviders.map((p) => `<button class="provider-chip ${p.id === activeProvider ? 'active' : ''}" data-provider="${esc(p.id)}">${icon('bot')}<span class="provider-label">${esc(p.name)}</span>${p.id === draft.defaultChatProviderId ? '<span class="badge">默认</span>' : ''}</button>`).join('')}</div>${
         provider
           ? `<form id="provider-form" class="settings-form"><label class="field"><span>配置名称</span><input name="name" value="${esc(provider.name)}" required></label><label class="field"><span>Base URL</span><input name="baseUrl" type="url" placeholder="https://api.example.com/v1" value="${esc(provider.baseUrl)}" required></label><div class="field"><label for="provider-api-key">API Key</label><div class="input-row api-key-row"><input id="provider-api-key" name="apiKey" type="password" value="${esc(provider.apiKey)}" placeholder="本地模型可留空" autocomplete="new-password">${iconButton('toggle-api-key', 'eye', '显示 API Key')}${button('get-api-key', 'external-link', '获取')}</div></div><label class="field"><span>模型名称</span><div class="input-row"><input name="model" value="${esc(provider.model)}" placeholder="填写服务商提供的模型 ID" required>${iconButton('list-models', 'refresh-cw', '获取模型列表')}</div></label><div class="field"><span>接口协议</span>${select(
               'api-protocol',
@@ -78,6 +110,7 @@ export async function openSettings(app, tab = 'api') {
         (btn) =>
           (btn.onclick = () => {
             capture();
+            autoSaveApi();
             activeProvider = btn.dataset.provider;
             render();
           }),
@@ -95,9 +128,13 @@ export async function openSettings(app, tab = 'api') {
         activeProvider = id;
         if (!draft.defaultChatProviderId) draft.defaultChatProviderId = id;
         render();
+        autoSaveApi();
       });
       const form = content.querySelector('#provider-form');
       if (form) {
+        form.addEventListener('input', autoSaveApi);
+        form.addEventListener('change', autoSaveApi);
+        form.addEventListener('valuechange', autoSaveApi);
         const eye = form.querySelector('[data-action="toggle-api-key"]');
         const getKey = form.querySelector('[data-action="get-api-key"]');
         eye.setAttribute('aria-pressed', 'false');
@@ -131,11 +168,13 @@ export async function openSettings(app, tab = 'api') {
           draft.defaultChatProviderId = draft.chatProviders[0]?.id || '';
         activeProvider = draft.chatProviders[0]?.id;
         render();
+        autoSaveApi();
       });
       content.querySelector('[data-action="default-provider"]')?.addEventListener('click', () => {
         capture();
         draft.defaultChatProviderId = activeProvider;
         render();
+        autoSaveApi();
       });
       content.querySelector('[data-action="test-provider"]')?.addEventListener(
         'click',
@@ -164,23 +203,21 @@ export async function openSettings(app, tab = 'api') {
             const b = e.target.closest('[data-model]');
             if (b) {
               content.querySelector('[name="model"]').value = b.dataset.model;
+              autoSaveApi();
               list.remove();
             }
           };
           field.append(list);
         }),
       );
-      content.querySelector('[data-action="save-settings"]').onclick = run(async () => {
-        capture();
-        await saveSettings({
-          chatProviders: draft.chatProviders,
-          defaultChatProviderId: draft.defaultChatProviderId,
-          onboardingDone: true,
-        });
+      const saveApi = async (close) => {
+        await persistApi();
         toast('API 配置已保存');
-        dialog.close();
+        if (close) dialog.close();
         app.refreshAssistant();
-      });
+      };
+      content.querySelector('[data-action="save-current-settings"]').onclick = run(() => saveApi(false));
+      content.querySelector('[data-action="save-settings"]').onclick = run(() => saveApi(true));
       content.querySelector('[data-action="import-fritia"]').onclick = () => {
         const input = document.createElement('input');
         input.type = 'file';
@@ -295,6 +332,7 @@ export async function openSettings(app, tab = 'api') {
     (btn) =>
       (btn.onclick = () => {
         capture();
+        autoSaveApi();
         tab = btn.dataset.action.replace('settings-', '');
         render();
       }),
@@ -308,8 +346,15 @@ export async function onboarding(app) {
   const dialog = modal(
     '欢迎来到纸间',
     `<div id="onboarding-content"></div><label class="toggle-row onboarding-preference"><span>不再显示</span><input name="hideOnboarding" type="checkbox"><span class="switch"></span></label>`,
-    { closable: false },
+    {
+      onClose: () => {
+        preferenceSave
+          .then(() => saveSettings({ onboardingDone: true }))
+          .catch((error) => toast(errorMessage(error), 'error'));
+      },
+    },
   );
+  dialog.element.classList.add('onboarding-modal');
   const root = dialog.element.querySelector('#onboarding-content');
   const preference = dialog.element.querySelector('[name="hideOnboarding"]');
   let preferenceSave = Promise.resolve();
@@ -324,9 +369,13 @@ export async function onboarding(app) {
   };
   const render = () => {
     if (step === 0)
-      root.innerHTML = `<div class="welcome"><div class="welcome-symbol">${icon('book-open')}</div><p class="eyebrow">READ BEYOND LANGUAGE</p><h2>专注阅读，跨越语言。</h2><p>阅读、批注、翻译与思考，<br>都留在同一张书桌上。</p><div class="welcome-features"><span>${icon('shield-check')}文档本地保存</span><span>${icon('languages')}即开即用词典</span></div></div><div class="onboarding-actions">${button('skip', 'arrow-up-right', '先使用在线翻译')}${button('next', 'sparkles', '配置我的 AI', 'primary')}</div>`;
+      root.innerHTML = `<div class="welcome"><div class="welcome-symbol">${icon('book-open')}</div><p class="eyebrow">READ BEYOND LANGUAGE</p><h2>纸间 · 文献翻译 &amp; AI 分析</h2><p>LLM 划词翻译 | PDF 标注编辑 | AI 文献问答<br>青尘工作室　<a href="https://space.bilibili.com/385556208" target="_blank" rel="noopener noreferrer" data-author-link>@CyanDust_青尘</a>　出品</p><div class="welcome-features"><span>${icon('shield-check')}文档本地保存</span><span>${icon('languages')}即开即用词典</span></div></div><div class="onboarding-actions welcome-actions">${button('skip', 'arrow-up-right', '直接进入 APP')}${button('next', 'sparkles', '配置我的 AI', 'primary')}</div>`;
     else
       root.innerHTML = `<div class="step-label">01 选择服务商 <span>→</span> 02 填写连接 <span>→</span> 03 开始阅读</div><div class="preset-grid">${PROVIDERS.map((p) => `<button class="preset ${p.id === preset.id ? 'active' : ''}" data-preset="${p.id}">${providerLogo(p.id)}<span>${p.name}</span></button>`).join('')}</div><form id="onboarding-form"><label class="field"><span>Base URL</span><input name="baseUrl" type="url" value="${esc(preset.baseUrl)}" required></label><label class="field"><span>API Key</span><input name="apiKey" type="password" placeholder="从服务商控制台获取，本地模型可留空" autocomplete="new-password"></label><label class="field"><span>模型名称</span><input name="model" value="${esc(preset.model)}" placeholder="填写服务商提供的模型 ID" required></label><p class="note" id="onboarding-status">之后可在设置中添加更多 API、调整文件输入能力。</p><div class="onboarding-actions">${button('back', 'arrow-left', '返回')}${button('test', 'refresh-cw', '测试连接')}<button type="submit" class="button primary">${icon('check')}保存并开始</button></div></form>`;
+    root.querySelector('[data-author-link]')?.addEventListener('click', (event) => {
+      event.preventDefault();
+      openExternalWebsite(event.currentTarget.href).catch((error) => toast(errorMessage(error), 'error'));
+    });
     root.querySelector('[data-action="skip"]')?.addEventListener('click', async () => {
       await preferenceSave;
       await saveSettings({ onboardingDone: true, hideOnboarding: preference.checked });

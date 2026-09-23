@@ -1,5 +1,22 @@
 /* Independent portrait layout. Pane switching is handled by ui/mobile.js. */
 @media (max-width: 960px) {
+  #settings-content > .section-heading:has(.api-heading-actions) {
+    flex-wrap: wrap;
+    gap: 0.85rem;
+  }
+  .api-heading-actions {
+    margin-left: auto;
+  }
+  .onboarding-modal .welcome-actions {
+    justify-content: center;
+  }
+  .onboarding-modal .welcome > h2 {
+    font-size: clamp(1.2rem, 4.6vw, 1.5rem);
+    line-height: 1.5;
+  }
+  .onboarding-modal .welcome > p:not(.eyebrow) {
+    font-size: 0.8rem;
+  }
   .basic-default {
     margin-bottom: 1rem;
   }

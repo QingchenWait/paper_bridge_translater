@@ -5,7 +5,7 @@ test.use({ hasTouch: true });
 
 async function dismiss(page) {
   await page.getByRole('checkbox', { name: '不再显示', exact: true }).check();
-  await page.getByRole('button', { name: '先使用在线翻译' }).click();
+  await page.getByRole('button', { name: '直接进入 APP' }).click();
 }
 async function setup(page, names = ['Edited.pdf']) {
   await page.goto('/');
@@ -277,7 +277,7 @@ test('welcome repeats by default including legacy users and hides only after exp
 }) => {
   await page.goto('/');
   await expect(page.getByRole('checkbox', { name: '不再显示', exact: true })).not.toBeChecked();
-  await page.getByRole('button', { name: '先使用在线翻译' }).click();
+  await page.getByRole('button', { name: '直接进入 APP' }).click();
   await page.reload();
   await expect(page.getByRole('dialog', { name: '欢迎来到纸间' })).toBeVisible();
   await page.getByRole('button', { name: '配置我的 AI' }).click();
@@ -307,7 +307,7 @@ test('welcome repeats by default including legacy users and hides only after exp
   });
   await page.reload();
   await expect(page.getByRole('dialog', { name: '欢迎来到纸间' })).toBeVisible();
-  await page.getByRole('button', { name: '先使用在线翻译' }).click();
+  await page.getByRole('button', { name: '直接进入 APP' }).click();
   expect(
     await page.evaluate(
       async () => (await (await import('/src/js/settings.js')).getSettings()).chatProviders[0].apiKey,
