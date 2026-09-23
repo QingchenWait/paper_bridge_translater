@@ -1,4 +1,5 @@
 import { esc } from '../utils.js';
+import { openAppleMenu, restoreAppleMenu } from '../compat/apple-webkit.js';
 const icons = import.meta.glob('../../_logo/icons/*.svg', { eager: true, query: '?url', import: 'default' });
 const art = import.meta.glob('../../_logo/art/*.png', { eager: true, query: '?url', import: 'default' });
 export const icon = (name, extra = '') =>
@@ -32,7 +33,10 @@ export function bindSelects(root = document) {
       closeMenus();
       menu.hidden = !open;
       trigger.setAttribute('aria-expanded', String(open));
-      if (open) menu.querySelector('[aria-selected="true"]')?.focus();
+      if (open) {
+        const portal = openAppleMenu(element, trigger, menu);
+        menu.querySelector('[aria-selected="true"]')?.focus(portal ? { preventScroll: true } : undefined);
+      }
     };
     menu.onclick = (event) => {
       const option = event.target.closest('[role="option"]');
@@ -43,6 +47,7 @@ export function bindSelects(root = document) {
         .querySelectorAll('[role="option"]')
         .forEach((el) => el.setAttribute('aria-selected', String(el === option)));
       menu.hidden = true;
+      restoreAppleMenu(menu);
       trigger.setAttribute('aria-expanded', 'false');
       trigger.focus();
       element.dispatchEvent(new CustomEvent('valuechange', { bubbles: true, detail: option.dataset.value }));
@@ -62,13 +67,16 @@ export function bindSelects(root = document) {
   });
 }
 export function closeMenus() {
-  document.querySelectorAll('.select-menu').forEach((menu) => (menu.hidden = true));
+  document.querySelectorAll('.select-menu').forEach((menu) => {
+    menu.hidden = true;
+    restoreAppleMenu(menu);
+  });
   document
     .querySelectorAll('.select-trigger')
     .forEach((trigger) => trigger.setAttribute('aria-expanded', 'false'));
 }
 document.addEventListener('click', (event) => {
-  if (!event.target.closest('.custom-select')) closeMenus();
+  if (!event.target.closest('.custom-select,.apple-select-portal')) closeMenus();
 });
 export function toast(message, type = 'info') {
   const element = document.createElement('div');

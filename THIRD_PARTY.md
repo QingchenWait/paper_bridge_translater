@@ -7,7 +7,8 @@
 | `D:/Models/vibe_coding/fritia_online_next_chat/src/js/settings.js` | 多 API 字段兼容、provider 规范化思路，改编至 `settings.js` | GPL-3.0 |
 | 同项目 `onboarding.js` | 选择服务商→填配置→测试→保存的引导流程，适配为 PDF 场景 | GPL-3.0 |
 | 同项目 `archive_sync.js` | 备份/WebDAV/CORS/定时同步流程，重写为 PDF 数据库事务合并 | GPL-3.0 |
-| [PDF.js](https://mozilla.github.io/pdf.js/examples/) | 渲染、文本提取、选择层及文字层 CSS | Apache-2.0；版本由 package-lock 固定 |
+| [PDF.js](https://mozilla.github.io/pdf.js/examples/) | 渲染、文本提取、选择层及文字层 CSS；Apple WebKit 使用同包 legacy 构建及配套 Worker | Apache-2.0；版本由 package-lock 固定 |
+| [core-js 3.50.0](https://github.com/zloirock/core-js/tree/v3.50.0) | PDF.js legacy 自带的 ECMAScript 兼容实现，无独立新增 npm 依赖 | MIT；原始许可证见 public/licenses/CORE-JS.txt |
 | [pdf-lib](https://pdf-lib.js.org/) | 修改和生成 PDF | MIT |
 | [@pdf-lib/fontkit](https://github.com/Hopding/fontkit/blob/master/src/subset/CFFSubset.js) | Noto 字体子集；pdf-fonts.js 对已安装 1.1.1 的 CFF 编码作局部兼容适配 | MIT；Devon Govett / Andrew Dillon，见 public/licenses/FONTKIT.txt |
 | [Lucide](https://github.com/lucide-icons/lucide) | `src/_logo/icons` 中 66 个 SVG，使用主分支或 0.468.0 下载版本；0.2.0 新增文件夹/移动/视图/排序七个图标，保留原文件内容 | ISC；见 `src/_logo/LUCIDE-LICENSE` |

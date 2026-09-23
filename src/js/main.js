@@ -1,6 +1,8 @@
 import '../styles/base.css';
 import '../styles/desktop.css';
 import '../styles/mobile.css';
+import '../styles/apple-webkit.css';
+import { installAppleWebKit } from './compat/apple-webkit.js';
 import { all, get, put, patch, addDocument, findDocumentsByMd5, requestPersistence } from './storage.js';
 import { getSettings } from './settings.js';
 import { scheduleSync, syncWebDav } from './archive.js';
@@ -59,6 +61,7 @@ class App {
     this.textCache = new Map();
   }
   async init() {
+    installAppleWebKit();
     this.mount();
     this.library = new LibraryView(this, document.getElementById('library-view'));
     this.openPdfMenu = new OpenPdfMenu(this);

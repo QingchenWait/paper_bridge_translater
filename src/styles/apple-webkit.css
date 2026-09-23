@@ -1,0 +1,46 @@
+/* Scoped Safari/iOS rules; other platforms retain the existing styles. */
+:root[data-apple-webkit] .page-canvas,
+:root[data-apple-webkit] .ink-layer {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+:root[data-apple-webkit] .page-canvas {
+  pointer-events: none;
+}
+:root[data-apple-webkit] .pdf-page .textLayer,
+:root[data-apple-webkit] .pdf-page .textLayer :is(span, br) {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+:root[data-apple-touch] .pdf-scroll[data-tool='select'] .textLayer {
+  touch-action: pan-x pan-y;
+}
+:root[data-apple-webkit] .pdf-scroll[data-tool='pen'] .textLayer,
+:root[data-apple-webkit] .pdf-scroll[data-tool='shape'] .textLayer,
+:root[data-apple-webkit] .pdf-scroll[data-tool='text'] .textLayer,
+:root[data-apple-webkit] .pdf-scroll[data-tool='eraser'] .textLayer {
+  -webkit-user-select: none;
+  user-select: none;
+  pointer-events: none;
+}
+:root[data-apple-webkit] .annotation-box,
+:root[data-apple-webkit] .annotation-shape-handle {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+:root[data-apple-webkit] .annotation-input {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+:root[data-apple-webkit] .apple-select-portal {
+  position: fixed;
+  z-index: 300;
+  margin: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}

@@ -1,5 +1,16 @@
 # 开发记录
 
+## v0.3.2 同版本修订 · Apple WebKit 阅读兼容与绘图选区 · 2026-09-24
+
+范围限于 iOS/iPadOS/macOS Safari 的 PDF 渲染和触控交互、工具栏比例菜单，以及绘图时避免重复翻译。版本、数据库和存档结构不变，也未修改其他平台的绘图或布局规则。
+
+- 复现报告中的 `Map.getOrInsertComputed` 错误：当前 pdfjs-dist 的常规构建在部分 WebKit 缺失该 API 时，翻页/缩放过程会在 PDFDocumentProxy 缓存中失败。旧 WebKit 还缺少 `ReadableStream[Symbol.asyncIterator]`，导致 PDF 文本层渲染失败。新增 `compat/apple-webkit.js`、`compat/apple-streams.js`、`compat/apple-pdf.worker.js` 和 `pdf-engine.js`，仅检测到 Apple WebKit 时按需加载 PDF.js legacy 构建与匹配 Worker，并在主线程/Worker 补齐所需能力；其他平台仍按需加载原构建。
+- Apple 路径使用主线程图像解码，显式关闭 PDF.js 的 OffscreenCanvas/ImageDecoder 优化，离开页面时释放旧 Canvas；`apple-webkit.css` 只在检测到 Apple WebKit 时生效，使 PDF 画布不拦截文字选择、绘图工具接收触控。触控创建文本框延迟到触控松开，避免 iPadOS 在 touchstart 聚焦输入框导致 pointercancel；PDF 工具栏比例菜单以临时 portal 显示在 body 上方，关闭时复原，避免被横向滚动容器裁切。
+- `PdfViewer.setTool` 和绘图/原位编辑入口清除旧 PDF 选区；`queueSelectionTranslation` 仅在文字选择模式提交结果，防止文本框、形状或笔迹的后续动作反复消费旧选区。选择后松手翻译的原规则保留。
+- 新增 Apple 特性检测和流式 API 单测、WebKit 桌面/iPad/iPhone 端到端及 Chromium 选区回归；静态产物验证工具支持以 WebKit 运行。macOS Safari 的纯白页面没有获得设备控制台首错，按异步 PDF 引擎加载与 WebKit 兼容路径处理；实际设备仍需复验。
+
+验证通过：语法检查、75 项单元测试、独立 5193 端口完整 93 项浏览器回归、构建和 Chromium/WebKit 26.6 生产子路径检查；使用仅安装在 .cache 的 Playwright 1.51.1/WebKit 18.4 另行验证桌面、iPad、iPhone 三场景和静态生产产物。覆盖缺失 API、翻页/缩放、文字层命中、菜单前景层级、笔迹/形状、触控文本框、存储恢复及旧选区不重复翻译。长按系统选区手柄和系统键盘未在真实 Apple 硬件实测，不能据此声明所有 Safari 历史版本均通过。保留原 5173 服务；普通沙箱拦截子进程后，在获准执行环境完成检查。PDF.js legacy 内置 core-js 的原始 MIT 许可证随 public/licenses/CORE-JS.txt 分发。
+
 ## v0.3.2 同版本修订 · 文件指纹与目录定位 · 2026-09-23
 
 范围限于新 PDF 导入的重复确认、初始指纹持久化和从阅读区进入文档管理的目录定位。版本、IndexedDB 版本 2、存档版本 2、运行依赖均不变。

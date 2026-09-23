@@ -1,7 +1,8 @@
-import { TextLayer, Util } from 'pdfjs-dist';
+import { getPdfEngine } from './pdf-engine.js';
 
 // Canvas and HTML must share fonts, language and the exact page coordinate space.
 export async function renderAlignedText(page, content, container, viewport) {
+  const { TextLayer, Util } = await getPdfEngine();
   const styles = {};
   const fonts = new Map();
   for (const [name, style] of Object.entries(content.styles)) {

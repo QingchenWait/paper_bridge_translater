@@ -1,8 +1,8 @@
 import { createServer } from 'node:http';
-import { readFile, stat, readdir, mkdir } from 'node:fs/promises';
+import { readFile, stat, readdir, mkdir, mkdtemp } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { resolve, relative, extname, sep } from 'node:path';
-import { chromium } from '@playwright/test';
+import { chromium, webkit } from '@playwright/test';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 const root = resolve('dist');
 const server = createServer(async (req, res) => {
@@ -46,10 +46,23 @@ const executable =
   (process.platform === 'win32' && existsSync('C:/Program Files/Google/Chrome/Application/chrome.exe')
     ? 'C:/Program Files/Google/Chrome/Application/chrome.exe'
     : undefined);
-let browser;
+let browser, context;
+const appleSmoke = process.env.PAPER_BRIDGE_SMOKE_ENGINE === 'webkit';
 try {
-  browser = await chromium.launch({ ...(executable ? { executablePath: executable } : {}) });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  if (appleSmoke) {
+    await mkdir('.cache', { recursive: true });
+    const engine = process.env.PAPER_BRIDGE_WEBKIT_MODULE
+      ? (await import(process.env.PAPER_BRIDGE_WEBKIT_MODULE)).webkit
+      : webkit;
+    context = await engine.launchPersistentContext(await mkdtemp('.cache/production-webkit-'), {
+      headless: true,
+      executablePath: engine.executablePath(),
+      viewport: { width: 1440, height: 1000 },
+    });
+  } else {
+    browser = await chromium.launch({ ...(executable ? { executablePath: executable } : {}) });
+    context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  }
   const page = await context.newPage();
   const failures = [];
   page.on('pageerror', (e) => failures.push(e.message));
@@ -127,9 +140,10 @@ try {
   }
   const info = await total(root);
   console.log(
-    `Production smoke passed: nested static path, local worker/assets, PDF upload, Chinese annotation export (${bytes.length} bytes), persistence and highlighting. ${info.count} deployment files, ${(info.size / 1024 / 1024).toFixed(1)} MiB total.`,
+    `Production smoke passed (${appleSmoke ? 'WebKit' : 'Chromium'}): nested static path, local worker/assets, PDF upload, Chinese annotation export (${bytes.length} bytes), persistence and highlighting. ${info.count} deployment files, ${(info.size / 1024 / 1024).toFixed(1)} MiB total.`,
   );
 } finally {
+  await context?.close();
   await browser?.close();
   await new Promise((resolve) => server.close(resolve));
 }

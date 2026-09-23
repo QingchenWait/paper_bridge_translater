@@ -1,5 +1,5 @@
-import * as pdfjs from 'pdfjs-dist';
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { getPdfEngine } from './pdf-engine.js';
+import { applePdfOptions, releaseAppleCanvases, deferAppleTextPlacement } from './compat/apple-webkit.js';
 import { all, put, patch, get } from './storage.js';
 import { uid } from './utils.js';
 import { planSelectionAction, selectionActionState } from './selection-actions.js';
@@ -8,9 +8,9 @@ import { renderAlignedText } from './pdf-text.js';
 import { indexPageText, findPageMatches } from './pdf-search.js';
 import { TextAnnotations } from './text-annotations.js';
 import { writeAnnotations } from './annotation-writes.js';
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 const base = import.meta.env.BASE_URL;
 export async function loadPdf(blob, onPassword) {
+  const pdfjs = await getPdfEngine();
   const task = pdfjs.getDocument({
     data: new Uint8Array(await blob.arrayBuffer()),
     cMapUrl: `${base}pdfjs/cmaps/`,
@@ -18,6 +18,7 @@ export async function loadPdf(blob, onPassword) {
     standardFontDataUrl: `${base}pdfjs/standard_fonts/`,
     wasmUrl: `${base}pdfjs/wasm/`,
     isEvalSupported: false,
+    ...applePdfOptions,
   });
   task.onPassword = async (update, reason) => {
     try {
@@ -178,7 +179,14 @@ export class PdfViewer {
   }
   queueSelectionTranslation(delay = 0) {
     clearTimeout(this.releaseTimer);
-    if (this.pointers.size || this.touchCount || this.annotationDrag) return;
+    if (
+      this.pointers.size ||
+      this.touchCount ||
+      this.annotationDrag ||
+      this.tool !== 'select' ||
+      this.textAnnotations.editing()
+    )
+      return;
     if (delay) this.releaseTimer = setTimeout(() => this.captureSelection({ translate: true }), delay);
     else this.captureSelection({ translate: true });
   }
@@ -196,6 +204,7 @@ export class PdfViewer {
     this.textLayers.clear();
     this.pageContents.clear();
     this.searchMatches.clear();
+    releaseAppleCanvases(this.container);
     this.container.replaceChildren();
     this.selection = null;
     this.callbacks.selectionState?.({});
@@ -224,6 +233,7 @@ export class PdfViewer {
     this.layoutDpr = window.devicePixelRatio || 1;
     this.scale =
       this.zoom === 'fit' ? Math.max(0.25, (this.container.clientWidth - 44) / vp.width) : Number(this.zoom);
+    releaseAppleCanvases(this.container);
     this.container.replaceChildren();
     this.container.style.setProperty('--scale-factor', this.scale);
     this.container.style.setProperty('--total-scale-factor', this.scale);
@@ -246,6 +256,7 @@ export class PdfViewer {
             if (this.textAnnotations.active?.page === number)
               this.textAnnotations.finish().catch(this.callbacks.error);
             this.tasks.get(number)?.cancel();
+            releaseAppleCanvases(entry.target);
             entry.target.replaceChildren();
             this.rendered.delete(number);
             this.textLayers.delete(number);
@@ -438,6 +449,7 @@ export class PdfViewer {
     this.callbacks.page(page);
   }
   setTool(tool, color) {
+    if (['text', 'shape', 'pen', 'eraser'].includes(tool)) this.clearSelectionForEditing();
     this.tool = tool;
     this.color = color;
     this.container.dataset.tool = tool;
@@ -524,6 +536,15 @@ export class PdfViewer {
     clearTimeout(this.releaseTimer);
     if (clearNative) window.getSelection()?.removeAllRanges();
     this.callbacks.selectionState?.({});
+  }
+  clearSelectionForEditing() {
+    const selection = window.getSelection();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    const node = range?.commonAncestorContainer;
+    const element = node?.nodeType === 1 ? node : node?.parentElement;
+    const isPdfRange = node && this.container.contains(node) && !element?.closest('.annotation-box');
+    this.clearSelection(Boolean(isPdfRange));
+    clearTimeout(this.selectionTimer);
   }
   async applySelectionAction(type, color) {
     if (this.selectionBusy || !this.selection?.rects.length) return false;
@@ -893,6 +914,7 @@ export class PdfViewer {
     };
     canvas.onpointerdown = async (event) => {
       if (this.textAnnotations.finishedPointer === event) return;
+      if (['text', 'shape', 'pen', 'eraser'].includes(this.tool)) this.clearSelectionForEditing();
       const start = point(event);
       const tool = this.tool;
       const documentId = this.doc.id;
@@ -949,7 +971,11 @@ export class PdfViewer {
         const fontSize = this.drawingOptions.textSize,
           color = this.color;
         event.preventDefault();
-        this.textAnnotations.begin([{ type: tool, color, page, ...start, fontSize }]);
+        const create = () => {
+          if (this.doc.id === documentId && this.tool === tool)
+            this.textAnnotations.begin([{ type: tool, color, page, ...start, fontSize }]);
+        };
+        if (!deferAppleTextPlacement(event, canvas, create)) create();
       }
     };
     canvas.onpointermove = (event) => {

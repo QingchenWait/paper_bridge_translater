@@ -47,6 +47,7 @@ pdf_translater/
 │  │  ├─ basic-translation.js      非 LLM 服务配置、签名、JSONP、分段和响应解析
 │  │  ├─ llm.js                    Chat/Responses、文件输入、SSE、原生 PDF
 │  │  ├─ markdown.js               Markdown/KaTeX/高亮/安全 HTML
+│  │  ├─ pdf-engine.js             按平台延迟加载常规/Apple legacy PDF.js 与配套 Worker
 │  │  ├─ pdf.js                    PDF.js 加载、文本提取、可见页和批注交互
 │  │  ├─ pdf-text.js               同源字体、准确尺寸/旋转与字宽/基线对齐
 │  │  ├─ pdf-search.js             文本索引、字符位置映射与大小写/全字匹配
@@ -58,6 +59,10 @@ pdf_translater/
 │  │  ├─ text-annotations.js       原位输入、尺寸模式、浮栏、锚点强调和分组历史
 │  │  ├─ annotation-writes.js      批注串行写入、所有者检查及导出/备份等待
 │  │  ├─ archive.js                ZIP、AES、校验、迁移、WebDAV
+│  │  ├─ compat/
+│  │  │  ├─ apple-webkit.js         Apple WebKit 检测、PDF 选项、触控放置与比例菜单 portal
+│  │  │  ├─ apple-streams.js        缺失 Promise/ReadableStream 能力的按需补齐
+│  │  │  └─ apple-pdf.worker.js     Apple legacy PDF.js 专用 Worker 入口
 │  │  └─ ui/
 │  │     ├─ components.js          图标、按钮、下拉、弹窗、提示、输入框
 │  │     ├─ assistant.js           划词、全文、AI 会话与任务状态
@@ -71,17 +76,18 @@ pdf_translater/
 │  └─ styles/
 │     ├─ base.css                  Tokens、公共组件、所有功能模块通用样式
 │     ├─ pdf-text-layer.css        PDF.js 文字层必要规则及许可证来源注释
+│     ├─ apple-webkit.css          仅 Apple WebKit 生效的文字选择、触控与菜单层级规则
 │     ├─ desktop.css               >960px 桌面横屏布局
 │     └─ mobile.css                ≤960px 移动竖屏布局
 ├─ public/
 │  ├─ fonts/{NotoSansSC-Regular.otf,LICENSE}
 │  ├─ pdfjs/{cmaps,standard_fonts,wasm}/   构建前从锁定的 PDF.js 包复制
-│  └─ licenses/                    项目与素材许可证；FONTKIT.txt 随源码维护
+│  └─ licenses/                    项目与素材许可证；FONTKIT.txt、CORE-JS.txt 随源码维护
 ├─ tools/
 │  ├─ download-assets.ps1          下载开源图标、插画、字体与文档
 │  ├─ prepare-assets.mjs           拷贝 PDF.js 资源和分发许可证
 │  ├─ check.mjs                    递归进行 JavaScript 语法检查
-│  └─ verify-dist.mjs              生产子路径静态部署、无 CDN、中文导出检查
+│  └─ verify-dist.mjs              Chromium/WebKit 生产子路径、无 CDN、中文导出检查
 ├─ tests/
 │  ├─ core.test.mjs                数据、清洗、SSE 和存档协议测试
 │  ├─ providers.test.mjs           模板、可信官网映射、原配置保留与原生桥接测试
@@ -98,7 +104,10 @@ pdf_translater/
 │  ├─ search-geometry.test.mjs     搜索过滤、跨文本片段、移动边界与命中测试
 │  ├─ library.test.mjs             目录/删除边界、事务回滚、共享历史、ZIP 和冲突测试
 │  ├─ file-fingerprints.test.mjs   原始 MD5、分块/独立身份、旧记录补算/删除竞态与存档
+│  ├─ apple-webkit.test.mjs        Apple 平台识别、Promise 与 ReadableStream 回退
 │  └─ e2e/
+│     ├─ apple-webkit.spec.js      WebKit 桌面/iPad/iPhone 的渲染、翻页、缩放、触控编辑
+│     ├─ selection-editing.spec.js 绘图/编辑过程中不重复翻译旧选区
 │     ├─ app.spec.js               原有合成 PDF 的真实浏览器功能回归
 │     ├─ optimizations.spec.js     状态反馈、松手翻译、绘图尺寸和导航回归
 │     ├─ reader-refinements.spec.js 字形坐标、旋转/裁切、高 DPI、拖动/历史及搜索浮窗
@@ -284,10 +293,14 @@ pdf_translater/
 
 ### pdf.js
 
+- `pdf-engine.getPdfEngine()`：首次打开 PDF 时才求值 PDF.js；Apple WebKit 加载 legacy 构建和对应 Worker，其他平台使用常规构建。失败清空缓存以便重试；避免 PDF 引擎加载错误直接阻断整个 APP 启动。
+- `compat/apple-webkit.applePlatform()`：按 AppleWebKit UA、Mac/iPad 平台及触控能力分流；macOS Chrome 和其他平台保持原路径。`installAppleWebKit` 安装 Apple 专用运行时能力与根节点标记；`applePdfOptions` 禁用 Apple 上不稳定的 OffscreenCanvas/ImageDecoder。
+- `compat/apple-streams.installAppleRuntime()`：仅在 Apple 主线程及 Worker 补齐缺失的 Promise.withResolvers 和 ReadableStream 异步迭代；已有原生实现保持不变。`releaseAppleCanvases` 在切页/重排时释放旧画布。
+- `compat/apple-webkit.deferAppleTextPlacement()`：iPhone/iPad 的文本框创建等待 touchend，避免 touchstart 聚焦引发 pointercancel 和空框自动删除。`openAppleMenu/restoreAppleMenu`：只将 PDF 工具栏自绘比例菜单临时移动到 body 层，关闭后恢复原父节点。
 - `loadPdf(blob,onPassword)`：传入本地二进制及本地 CMap/字体/WASM；密码通过回调获取；为 PDF.js 6 的 loading task 提供统一 destroy 适配。
 - `extractPdfText(pdf,onProgress)`：顺序获取每页文字，按位置移除页边纯数字行号，附页码。
 - `PdfViewer.constructor`：绑定 Pointer/Touch 按下、松开、取消和键盘释放；仅跟踪 PDF 选择手势，selectionchange 只更新选区状态。文档外松手也可完成从 PDF 开始的选择，多触点未全部离开时不翻译。
-- `queueSelectionTranslation(delay)`：无活动指针/触控时才提交；鼠标松开立即提交，触控结束延迟 60ms 等待原生选区稳定，同一完成选区去重。
+- `queueSelectionTranslation(delay)`：只在文字选择模式、无活动指针/触控/原位编辑时提交；鼠标松开立即提交，触控结束延迟 60ms 等待原生选区稳定，同一完成选区去重。
 - `setDrawingOptions(options)`：同步后续批注/文本框字号、手绘笔宽和形状类型；绘制开始时冻结参数，不修改已有记录。
 - `open(doc,pdf)`：结束并等待原位编辑，再取消旧渲染、切换文档和批注。
 - `layout()`：先结束原位编辑，再计算比例、建立页面占位、观察可见页、记录滚动页码和已布局宽度/DPR。主入口仅在尺寸或 DPR 变化时请求 fit 重排，避免延迟清空选区。
@@ -299,9 +312,10 @@ pdf_translater/
 - `search(query,options,{signal,onProgress})`：逐页收集全部匹配，支持取消及页数进度；结果仅在内存，空查询清除高亮。
 - `matchRects(match)`：按 itemIndex/字符范围创建真实 DOM Range，返回匹配文字的归一化矩形。
 - `drawSearchMatches(page)` / `revealSearchMatch(match)`：绘制独立浅黄标记；点击结果定位实际文字而非只跳到页首。
-- `setTool(tool,color)`：切换鼠标命中层；文本框/手绘/橡皮擦/形状使用 Canvas 命中层，选择工具保留文字选择。
+- `setTool(tool,color)`：切换鼠标命中层；文本框/手绘/橡皮擦/形状使用 Canvas 命中层，进入绘图工具时清除旧 PDF 选区；选择工具保留文字选择。
 - `captureSelection({translate=false})`：原位文字输入期间跳过；其余裁切 Range 与文字 span 的交集，转换归一化坐标，刷新按钮状态；仅明确 translate=true、没有按住的指针且内容未提交过时调用翻译回调。
 - `clearSelection(clearNative)`：清空选区与按下状态，按需释放浏览器选区。
+- `clearSelectionForEditing()`：绘图/原位编辑开始时取消内部选区；仅当浏览器选区属于 PDF 且不在批注输入框中，才移除原生 Range，避免清空正在输入的文字。
 - `applySelectionAction(type,color)`：按注册规则添加或局部清除；空选区不执行，互斥防重复，完成后释放；新批注转交 TextAnnotations.begin，空草稿退出时不留下对象。
 - `commitAnnotationChanges(rows)`：委托 writeAnnotations 串行事务提交同一操作的所有页面；提交成功再更新当前文档和绘制。
 - `addAnnotation(value)`：先保存后绘制，记录当前文档撤销栈。
@@ -380,6 +394,8 @@ pdf_translater/
 ### ui/components.js
 
 `icon` / `illustration` 读取构建时导入的本地图标/插画；`button` / `iconButton` 生成有 aria-label 的按钮；`select` / `selected` / `bindSelects` 实现自绘下拉与键盘选择；`closeMenus` 统一关闭；`toast` 展示临时状态；`modal` 管理焦点环、Esc 和遮罩；`inputDialog` 返回可等待的文本、密码、取消或删除操作。
+
+Apple WebKit 的 PDF 工具栏下拉由 `bindSelects` 临时挂到 body，选项点击及 `closeMenus` 均调用 `restoreAppleMenu`；其他位置和平台仍按原 DOM 层级展示。
 
 `anchoredPopover(anchor,title,body)` 复用 modal 焦点和关闭机制，将浮层固定在按钮下方 8px；限制视口宽高、窗口变化时重定位、关闭后移除监听。只用于翻译设置，不改变其他设置弹窗布局。
 
@@ -478,6 +494,7 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 | DOM / 标识 | 用户功能 | 处理模块 |
 | --- | --- | --- |
 | #app / .sidebar / .main-nav | 品牌、PDF 阅读、文档、翻译记录、设置/同步入口 | App.mount / action |
+| html[data-apple-webkit] / [data-apple-touch] / .apple-select-portal | Apple 专用文字/触控规则及位于页面上方的工具栏比例菜单 | compat/apple-webkit / apple-webkit.css |
 | #workspace / .reader-panel / .assistant-panel | 左 PDF 右翻译的工作区 | desktop/mobile |
 | #split-handle | 拖动或方向键调整左右宽度 | desktop.js |
 | #document-tabs / .document-tab | 已打开 PDF 的单行卡片、关闭和激活；页码保留在工具栏 | App.renderTabs |

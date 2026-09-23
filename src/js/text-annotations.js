@@ -201,6 +201,7 @@ export class TextAnnotations {
   action(type) {
     const row = this.row();
     if (!row || !this.active) return;
+    this.viewer.clearSelectionForEditing();
     this.endResize?.();
     if (this.active.mode === 'text') {
       if (type === 'delete') {
@@ -328,6 +329,7 @@ export class TextAnnotations {
   }
   resize(event, row, side) {
     if (event.button !== 0) return;
+    this.viewer.clearSelectionForEditing();
     event.preventDefault();
     event.stopPropagation();
     this.lastTap = null;
