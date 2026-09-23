@@ -225,14 +225,14 @@ test('font and pen sliders affect new records; strike and shapes survive archive
   await setSize('批注', 22);
   await select(page);
   await page.getByRole('button', { name: '批注', exact: true }).click();
-  await page.locator('#input-form textarea').fill('Larger note');
-  await page.locator('#input-form button[type=submit]').click();
+  await page.locator('.annotation-input').fill('Larger note');
+  await page.locator('#document-status').click();
   await setSize('添加文本框', 26);
   await page.getByRole('button', { name: '添加文本框', exact: true }).click();
   const ink = page.locator('.pdf-page[data-page="1"] .ink-layer');
   await ink.click({ position: { x: 90, y: 180 } });
-  await page.locator('#input-form textarea').fill('Sized textbox');
-  await page.locator('#input-form button[type=submit]').click();
+  await page.locator('.annotation-input').fill('Sized textbox');
+  await page.locator('#document-status').click();
   await page.keyboard.press('Escape');
   await setSize('手绘笔迹', 5);
   await page.getByRole('button', { name: '手绘笔迹', exact: true }).click();

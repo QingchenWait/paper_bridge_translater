@@ -1,6 +1,6 @@
 # 项目结构与开发逻辑
 
-适用版本：0.3.0（包含本轮同版本自动保存/启动页修订）。入口为 `index.html` → `src/js/main.js`。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
+适用版本：0.3.1。入口为 `index.html` → `src/js/main.js`，浏览器标题为“纸间 · 文献翻译”。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
 
 ## 文件树
 
@@ -30,7 +30,7 @@ pdf_translater/
 │  │  ├─ FLUENT-LICENSE
 │  │  ├─ LOBE-ICONS-LICENSE
 │  │  ├─ llms/{deepseek,mimo,qwen,openai,glm,kimi,lmstudio}.svg
-│  │  ├─ icons/*.svg               62 个已下载 Lucide 图标，清单见下
+│  │  ├─ icons/*.svg               66 个已下载 Lucide 图标，清单见下
 │  │  └─ art/{open-book,sparkles}.png
 │  ├─ js/
 │  │  ├─ main.js                   应用协调、标签、工具栏、文档管理
@@ -39,6 +39,7 @@ pdf_translater/
 │  │  ├─ settings.js               多 API 兼容配置、归一化、默认服务
 │  │  ├─ providers.js              八种配置模板、官网映射和浏览器/客户端打开入口
 │  │  ├─ document-download.js      一致快照合并编辑，所有 PDF 下载共用
+│  │  ├─ pdf-links.js              外部 PDF 链接及固定后缀文件名校验
 │  │  ├─ utils.js                  转义、UUID、下载、哈希、格式化
 │  │  ├─ text.js                   PDF 排版清洗、单词判断、按字节切片
 │  │  ├─ translation.js            免费词典、词形补充、基础翻译入口
@@ -50,12 +51,17 @@ pdf_translater/
 │  │  ├─ pdf-search.js             文本索引、字符位置映射与大小写/全字匹配
 │  │  ├─ selection-actions.js      可注册的选区动作、命中状态及局部清除规则
 │  │  ├─ shapes.js                 形状选择清单、共享 PDF 点坐标几何及画布路径
-│  │  ├─ pdf-export.js             带批注 PDF、视觉版全文译文 PDF
+│  │  ├─ pdf-export.js             标准批注及文字/绘图导出、视觉版译文 PDF
+│  │  ├─ pdf-comments.js           标准文字标记、Ink、Text/Popup、Unicode 和换行
+│  │  ├─ pdf-fonts.js              原 Noto CFF 子集编码适配及旧损坏子集修复
+│  │  ├─ text-annotations.js       原位输入、尺寸模式、浮栏、锚点强调和分组历史
+│  │  ├─ annotation-writes.js      批注串行写入、所有者检查及导出/备份等待
 │  │  ├─ archive.js                ZIP、AES、校验、迁移、WebDAV
 │  │  └─ ui/
 │  │     ├─ components.js          图标、按钮、下拉、弹窗、提示、输入框
 │  │     ├─ assistant.js           划词、全文、AI 会话与任务状态
 │  │     ├─ library.js             文档管理卡片/列表、多选和操作弹窗
+│  │     ├─ open-pdf.js            打开三项菜单、文档树及外部链接导入弹窗
 │  │     ├─ pdf-navigation.js      缩略图、内置书签、目标解析及导航渲染生命周期
 │  │     ├─ settings-panel.js      设置五页、启动引导、迁移入口
 │  │     ├─ basic-settings.js      基础翻译折叠配置、连接测试、默认与保存
@@ -69,7 +75,7 @@ pdf_translater/
 ├─ public/
 │  ├─ fonts/{NotoSansSC-Regular.otf,LICENSE}
 │  ├─ pdfjs/{cmaps,standard_fonts,wasm}/   构建前从锁定的 PDF.js 包复制
-│  └─ licenses/                    构建时复制项目与素材许可证
+│  └─ licenses/                    项目与素材许可证；FONTKIT.txt 随源码维护
 ├─ tools/
 │  ├─ download-assets.ps1          下载开源图标、插画、字体与文档
 │  ├─ prepare-assets.mjs           拷贝 PDF.js 资源和分发许可证
@@ -80,6 +86,10 @@ pdf_translater/
 │  ├─ providers.test.mjs           模板、可信官网映射、原配置保留与原生桥接测试
 │  ├─ basic-translation.test.mjs   三家签名、响应、分段/取消、凭据存档和并发保存
 │  ├─ settings-persistence.test.mjs 自动保存交错写入、完整设置备份、清空 API 防复活
+│  ├─ annotation-writes.test.mjs   原位写入顺序、事务回滚、删除保护和几何备份
+│  ├─ pdf-comments.test.mjs        PDF 标准注释/弹窗引用、Unicode 和换行规则
+│  ├─ pdf-fonts.test.mjs           新旧字体子集、连续编辑、字体名与映射保留
+│  ├─ pdf-links.test.mjs           链接后缀、协议、安全文件名与固定扩展名
 │  ├─ selection-actions.test.mjs   选区规则、多类型/多页与局部清除测试
 │  ├─ save-file.test.mjs           单次保存、取消和写失败不重复下载测试
 │  ├─ shapes.test.mjs              形状几何、删除线及字号规则测试
@@ -92,7 +102,9 @@ pdf_translater/
 │     ├─ library.spec.js           文档库交互、共享历史、下载、切换锁和无损升级
 │     ├─ editing-settings.spec.js  编辑导出回读、选词/绘图手势、引导/API 设置回归
 │     ├─ basic-translation.spec.js 基础设置/教程/默认引擎、JSONP 和阅读区路由
-│     └─ settings-autosave.spec.js 自动保存、即时备份、动画速度、桌面/手机启动页
+│     ├─ settings-autosave.spec.js 自动保存、即时备份、动画速度、桌面/手机启动页
+│     ├─ inline-annotations.spec.js 原位输入/宽度/工具、空对象、原生导出及紧凑控件
+│     └─ v031.spec.js              打开菜单/链接/文档树、浮栏同步、原字体重复导出
 ├─ dist/                           构建产物，不手工编辑
 ├─ node_modules/                   npm 依赖，不手工编辑
 ├─ .cache/                         npm 缓存、开发期官方文档，不进入发布
@@ -109,6 +121,8 @@ pdf_translater/
 
 0.2.1 追加 `eye-off.svg`（Lucide 0.468.0）和七个厂商 LOGO（Lobe Icons 固定提交，下载出处见 THIRD_PARTY.md）。
 
+0.3.0 原位批注修订追加 move、rotate-ccw、a-arrow-up、a-arrow-down 四个 Lucide 0.468.0 图标，下载脚本已同步；0.3.1 复用既有下载图标。
+
 ## 数据模型与不变量
 
 数据库名 `paper-bridge`，版本 2；所有对象仓库以 `id` 为 keyPath。升级仅新增缺失表，旧文档 folderId 缺省视为根目录，不重写或清除原数据。
@@ -117,7 +131,7 @@ pdf_translater/
 | --- | --- | --- |
 | documents | id, rootId, folderId?, name, pages, size, page, zoom, createdAt, updatedAt, translationId? | folderId 为空代表根目录；rootId 是稳定逻辑组 ID，原文删除后仍保留该值以继续共享历史 |
 | files | id, blob, updatedAt | id 与 documents 一致；原始或生成 PDF 不可变，避免编辑破坏源文件 |
-| annotations | id, documentId, page, type, color, rects/points/x/y/text, selectedText?, fontSize?, strokeWidth?, shape?/start?/end?, deleted, recovered? | 下划线/删除线/高亮/新批注保存选区 rects；笔迹 points 与形状 start/end 使用归一化坐标；尺寸以 pt 保存；局部移除裁剪 rects，清空使用 tombstone |
+| annotations | id, documentId, page, type, color, rects/points/x/y/text, selectedText?, fontSize?, width?, boxWidth?, boxHeight?, border?, strokeWidth?, shape?/start?/end?, deleted, recovered? | 下划线/删除线/高亮/新批注保存选区 rects；笔迹 points 与形状 start/end 使用归一化坐标；尺寸以 pt 保存；局部移除裁剪 rects，清空使用 tombstone |
 | conversations | id, rootId, title, createdAt, updatedAt | 逻辑文档下多条独立会话；原文和译文共享 |
 | messages | id, conversationId, role, content, status, error?, createdAt, updatedAt, recovered? | 用户先保存再请求；助手逐增量保存；不按轮数裁剪 |
 | translations | id, documentId, rootId, content, language, providerId, status, error?, output, generatedDocumentId? | 多次全文翻译记录及 PDF 产物关联 |
@@ -176,7 +190,7 @@ pdf_translater/
 - `providerKeyUrl(baseUrl)`：读取当前输入，按完整主机名匹配已知服务；拒绝无效协议、内嵌凭据、自定义端口和仿冒后缀域名，返回固定官网 URL 或 null，绝不携带输入的查询参数/Key。
 - `openExternalWebsite(url)`：只允许不带内嵌凭据的 HTTPS 链接，供已知官网及基础服务教程复用网页/Tauri 打开逻辑。
 - `openProviderWebsite(baseUrl)`：映射固定官网后委托 openExternalWebsite；网页通过 noopener/noreferrer 打开新标签；Tauri 2 使用 opener.openUrl 或 plugin:opener|open_url，Tauri 1 使用 shell.open，唤起默认浏览器。打包需启用插件权限，仓库不包含原生安装包。
-- `editedDocumentBlob(documentId)`：readonly 事务读取 documents/files/annotations 的同一快照；仅合并所属文档未删除记录。没有编辑直接返回原 Blob，有编辑按需加载 PDF.js/pdf-lib 并复用 exportAnnotatedPdf，finally 释放独立源解析器；不覆盖数据库文件、不依赖随标签切换销毁的阅读器实例。阅读栏、文档管理所有下载模式、已生成译文下载均复用。
+- `editedDocumentBlob(documentId)`：先等待 flushAnnotations，再 readonly 事务读取 documents/files/annotations 的同一快照；仅合并所属文档未删除记录。没有编辑直接返回原 Blob，有编辑按需加载 PDF.js/pdf-lib 并复用 exportAnnotatedPdf，finally 释放独立源解析器；不覆盖数据库文件、不依赖随标签切换销毁的阅读器实例。阅读栏、文档管理所有下载模式、已生成译文下载均复用。
 - `hideOnboarding`：默认 false，只有显式开关设置为 true 才跳过引导；onboardingDone 保留兼容字段但不再控制弹出。切换开关立即保存，跳过/完成前等待保存，随既有设置备份流程持久化。
 
 ### basic-translation.js
@@ -214,12 +228,37 @@ pdf_translater/
 - `testProvider(provider,signal)`：短文本响应测试，不设置可能破坏结构的输出截断。
 - `listModels(provider)`：读取 `/models`，超时后报告错误。
 
+### text-annotations.js / annotation-writes.js
+
+- `TextAnnotations` 仅管理 note/text，复用 PdfViewer 的文档、批注数组、历史与绘制。active 区分 text 输入和 size 尺寸模式；跨页新批注初次输入共享文本，后续对象可独立修改。
+- `row/element/editing`：按稳定 ID 定位数据、DOM 和原位输入状态。`begin/activate/edit`：建立临时空对象或进入已有对象输入，清理 PDF 原选区并聚焦 textarea。
+- `select`：单击尺寸模式、触控同对象双点进入输入。`showToolbar`：尺寸模式四/五按钮，文字模式仅字号增减/删除三按钮。`finish`：结束输入/尺寸手势、移除浮栏 DOM，空内容标记删除，放弃空新建不产生有效历史；最终几何写入后可供导出等待。
+- `input/persist`：每次输入克隆数据并串行保存，一次文字编辑合为一条 before/after 历史；旧写入不会回填覆盖新输入。`action`：字号 ±1pt（6–144）、文本框 border 开关、删除 width 恢复自动、无确认删除。文字模式改字号合入当前会话历史，点击不移走输入焦点；删除先完成编辑再建立独立删除历史，撤销恢复最新文字。
+- `render/fit`：保留正在输入的 DOM/光标；Canvas 字宽测量、textarea.scrollHeight 调整宽高；默认宽度最大页面 45%，width 存在表示手动归一化宽度，boxWidth/boxHeight 缓存实际几何。Enter 与原文选区分离，不调用翻译。
+- `resize`：左右手柄捕获鼠标/触控，左侧调整同时变更 x；范围不超页面，一次拖动一条历史，取消恢复 before。`positionToolbar`：浮栏作为对象子元素使用局部坐标，随对象同一次布局移动，无独立 fixed 跟随或位置过渡；滚动、尺寸变化时保持阅读视口内可操作。
+- `emphasize`：按指针与源文 rects 命中添加柔和发光，不创建可拦截取词的文字覆盖层。
+- `writeAnnotations(rows)`：捕获不可变快照，串行在同一事务写入一组记录，检查 documents/deletions，禁止复活已删除所有者；失败整组回滚。`flushAnnotations()`：供编辑结束、文档切换、下载和备份等待。
+- annotations 新增可选 width（0–1，存在即手动模式）、boxWidth/boxHeight（正数实际尺寸）、border（布尔，仅文本框显示）；旧记录没有这些字段时按自动宽度、无文本框边框处理，无清库迁移。
+
+### pdf-comments.js
+
+- `appendPdfMark(pdf,page,annotation,viewport)`：underline/strike/highlight→Underline/StrikeOut/Highlight，归一化选区按页旋转/裁切转换为 QuadPoints；pen→Ink，一个对象中一条 InkList 子路径，按 strokeWidth 绘制连续圆角 AP。高亮 ca/CA=0.3、Multiply；所有标记只追加 Annots，不写入页面内容流。
+- `appendPdfNote(pdf,page,note,viewport)`：有 rects 则建立 Underline 注释、QuadPoints、原色下划线 AP；旧自由便签建立 Text/Comment 注释；二者均关联独立 Popup/Parent，保存 UTF-16 Contents、标题、时间、稳定 NM，追加原 Annots 而不覆盖。批注不调用 page.drawText、不写入正文内容流。
+- `wrapAnnotationText(text,measure,width)`：保留显式换行，优先空白断行、长词/CJK 按码点拆行，供文本框导出；自动宽度按导出字体测量并保留 45% 上限，手动宽度沿用数据，边框导出为页面矢量矩形。
+- PDF.js 与 MuPDF 验证注释内容/链接，Chrome 实测悬停弹窗；Chrome/PDFium 会忽略文件原 Popup 外观并重建 ANSI 字体弹窗，中文漏显属于宿主限制，文件内容并未丢失。Acrobat 未在本轮运行。
+
+### pdf-fonts.js
+
+- `notoFontkit.create(data)`：委托原 fontkit，只为 NotoSansSC-Regular CFF 字体的 createSubset 添加局部适配。offSize 取原头部值；subsetFontdict 按原 FD 索引稳定映射到子集 FD，分别收集所用局部 Subrs，原字形程序保持不变。其他字体直接使用原实现。
+- `repairNotoCffFonts(pdf,originalBytesOrLoader)`：仅检查名称匹配且 offSize 非法的 Noto FontFile3/CIDFontType0C 流；通过 Identity-H、ToUnicode 的 bfchar 恢复 CID→Unicode，从同一原始 OTF 按旧 CID 顺序重新编码。替换同一引用的字体流，保留字体名/宽度/ToUnicode，不触碰正常字体及其他字体；不安全映射显式报错。返回修复数量，原字体仅在需要修复时加载。
+- `encodeSubset`（内部）：收集编码流为 Uint8Array；修复在 pdf.flush 后、最终 save 前执行，已正确编码的子集不会被重复生成。
+
 ### markdown.js / pdf-export.js
 
 - `renderMarkdown(text)`：Markdown + KaTeX + 代码高亮后 DOMPurify 清理，允许所需的安全字体、颜色、表格样式。
 - `mountMarkdown(element,text)`：将安全内容放入容器，链接隔离打开；远程图片改占位，避免隐式请求。
-- `loadFont()`（内部）：第一次含文本的批注导出加载 Noto 字体。
-- `exportAnnotatedPdf(blob,annotations,sourcePdf)`：读取原 PDF，按 viewport 转换归一化坐标，绘制高亮、下划线、删除线、指定笔宽笔迹及形状矢量轮廓，中英文字使用记录的 fontSize；保持原文件不变。
+- `loadFont()`（内部）：导出页面文本框或修复旧损坏子集时按需加载同一原始 Noto 字体；仅含标准批注且源文件字体正常时不加载。
+- `exportAnnotatedPdf(blob,annotations,sourcePdf)`：读取原 PDF 并注册 notoFontkit；批注交给 appendPdfNote，文字标记及笔迹交给 appendPdfMark；形状沿用矢量绘制，文本框按记录的 fontSize/手动宽度/边框绘制。flush 后修复旧 Noto 子集，保持源 Blob 不变。
 - `markdownToPdf(text,onProgress)`：离屏渲染译文，逐块/逐页生成 PDF；过高块分片，逐页释放画布。输出为栅格视觉 PDF。
 
 ### pdf.js
@@ -229,8 +268,8 @@ pdf_translater/
 - `PdfViewer.constructor`：绑定 Pointer/Touch 按下、松开、取消和键盘释放；仅跟踪 PDF 选择手势，selectionchange 只更新选区状态。文档外松手也可完成从 PDF 开始的选择，多触点未全部离开时不翻译。
 - `queueSelectionTranslation(delay)`：无活动指针/触控时才提交；鼠标松开立即提交，触控结束延迟 60ms 等待原生选区稳定，同一完成选区去重。
 - `setDrawingOptions(options)`：同步后续批注/文本框字号、手绘笔宽和形状类型；绘制开始时冻结参数，不修改已有记录。
-- `open(doc,pdf)`：取消旧渲染、切换文档和批注。
-- `layout()`：计算比例、建立页面占位、观察可见页、记录滚动页码和已布局宽度/DPR。主入口仅在尺寸或 DPR 变化时请求 fit 重排，避免延迟清空选区。
+- `open(doc,pdf)`：结束并等待原位编辑，再取消旧渲染、切换文档和批注。
+- `layout()`：先结束原位编辑，再计算比例、建立页面占位、观察可见页、记录滚动页码和已布局宽度/DPR。主入口仅在尺寸或 DPR 变化时请求 fit 重排，避免延迟清空选区。
 - `renderPage(number,generation)`：返回或复用该页完整绘制 Promise，供可见页加载与搜索/历史精确定位等待文字层就绪。
 - `paintPage(number,generation)`：建立画布/文字/批注/搜索/手绘层，防止旧任务回填；延续原超采样与 600 万像素预算。调用 renderAlignedText 保持字体、尺寸、裁切/旋转/UserUnit 一致；加载后重绘搜索标记。
 - `goTo(page)`、`setZoom(zoom)`：页码边界、滚动和重新布局。
@@ -240,18 +279,18 @@ pdf_translater/
 - `matchRects(match)`：按 itemIndex/字符范围创建真实 DOM Range，返回匹配文字的归一化矩形。
 - `drawSearchMatches(page)` / `revealSearchMatch(match)`：绘制独立浅黄标记；点击结果定位实际文字而非只跳到页首。
 - `setTool(tool,color)`：切换鼠标命中层；文本框/手绘/橡皮擦/形状使用 Canvas 命中层，选择工具保留文字选择。
-- `captureSelection({translate=false})`：裁切 Range 与文字 span 的交集，转换归一化坐标，刷新按钮状态；仅明确 translate=true、没有按住的指针且内容未提交过时调用翻译回调。
+- `captureSelection({translate=false})`：原位文字输入期间跳过；其余裁切 Range 与文字 span 的交集，转换归一化坐标，刷新按钮状态；仅明确 translate=true、没有按住的指针且内容未提交过时调用翻译回调。
 - `clearSelection(clearNative)`：清空选区与按下状态，按需释放浏览器选区。
-- `applySelectionAction(type,color)`：按注册规则添加或局部清除；空选区不执行，互斥防重复，完成后释放；批注输入取消不创建记录。
-- `commitAnnotationChanges(rows)`：一次 annotations 事务提交同一操作的所有页面；提交成功再更新当前文档和绘制。
+- `applySelectionAction(type,color)`：按注册规则添加或局部清除；空选区不执行，互斥防重复，完成后释放；新批注转交 TextAnnotations.begin，空草稿退出时不留下对象。
+- `commitAnnotationChanges(rows)`：委托 writeAnnotations 串行事务提交同一操作的所有页面；提交成功再更新当前文档和绘制。
 - `addAnnotation(value)`：先保存后绘制，记录当前文档撤销栈。
 - `historyState()` / `notifyHistory()`：返回当前文档 undo/redo 可用性；空栈或提交中禁用按钮。
 - `annotationLocation(annotation)`：便签/文本框取自身位置，其他标记取选区/笔迹/形状位置。
 - `undo(redo)`：提交对应 before/after 或 tombstone，然后定位操作页及位置。失败恢复栈；历史仍仅本次会话有效。
 - 选区动作历史为 `{changes:[{before,after}],location?}`，保留局部清除真实位置；拖动和编辑使用 before/after，兼容原笔迹创建的历史格式。
-- `editAnnotation(annotation)`：文本或便签编辑/删除回调，纳入历史。
-- `startAnnotationDrag(event,page)`：选词手势期间或形状菜单首笔转发时不介入；其他情况下命中便签/文本框/形状后由页面捕获指针；3px 内仍视为点击编辑，超过阈值预览位移，松手事务提交、取消恢复。`cancelAnnotationDrag` 清理手势、监听和捕获。
-- `drawAnnotations(page)`：重绘标记和带 touch-action 的透明形状命中区域；字体/笔宽继续按已有数据绘制。
+- `editAnnotation(annotation)`：委托原位 TextAnnotations.edit，不再打开输入弹窗。
+- `startAnnotationDrag(event,page)`：选词手势期间或形状菜单首笔转发时不介入；其他情况下命中便签/文本框/形状后由页面捕获指针；3px 内视为进入尺寸模式，超过阈值捕获指针并预览位移，松手事务提交、取消恢复。`cancelAnnotationDrag` 清理手势、监听和捕获。
+- `drawAnnotations(page)`：重绘标记、批注同色锚点及形状命中区域；note/text DOM 交给原位控制器复用以保留光标。输入区、尺寸手柄和已有取词手势均不被普通拖动劫持。
 - `releaseTextSelection()`：指针和触控均已释放时移除 selecting-text；取词期间通过此类关闭所有覆盖元素 pointer-events，取消/窗口失焦也清理。
 - `beginShapeFromPointer(event)`：菜单在窗口 pointerdown 捕获阶段关闭并激活后，若原目标尚非墨迹层，转发首次按下到同页画布，保留首笔鼠标/触控绘制。
 - `bindInk(canvas,page)`：原手绘/形状创建保留；橡皮擦按笔迹线段或形状几何命中并删除整个对象，纳入历史。
@@ -264,7 +303,7 @@ pdf_translater/
 
 ### selection-actions.js
 
-- `registerSelectionAction(type,create)`：注册创建回调；返回额外字段，或返回 `null` 取消。当前注册 underline/strike/highlight/note，note 从 context 读取 fontSize。未来同类工具注册后可复用状态、删除和执行逻辑。
+- `registerSelectionAction(type,create)`：注册创建回调；返回额外字段，或返回 `null` 取消。当前注册 underline/strike/highlight/note，note 从 context 读取 fontSize 并产生空文字草稿。未来同类工具注册后可复用状态、删除和执行逻辑。
 - `isSelectionAction(type)`：区分一次性选区动作与手绘/文本框持续模式。
 - `overlaps(a,b)`：同页且水平相交、同一文字行的垂直重合判定。
 - `subtractSelection(rects,selection)`：从已有标记矩形扣除选中文字对应部分，保留左右未选部分。
@@ -272,7 +311,7 @@ pdf_translater/
 - `selectionActionState(annotations,selection)`：返回所有注册工具的独立按下状态，可同时为 true。
 - `planSelectionAction(type,annotations,selection,context)`：无选区空操作；有命中则生成局部移除计划；无命中调用 create 按页生成记录。纯规则不读写数据库，由 PdfViewer 统一提交。
 
-旧版没有 rects 的自由便签仍保留原位、可点击编辑，不猜测其文本关联，也不迁移或清除旧记录。
+旧版没有 rects 的自由便签仍保留原位、可双击原位编辑，不猜测其文本关联，也不迁移或清除旧记录。
 
 ### shapes.js
 
@@ -285,7 +324,7 @@ pdf_translater/
 
 ### archive.js
 
-- `createArchive({includeSecrets,password})`：先等待 flushSettings，再创建一致快照、二进制 PDF、SHA-256 清单、异步 ZIP；格式版本 2 包含九表及目录/删除记录，可剥除凭据和加密。includeSecrets=false 时也清空全部基础翻译 keyId/secret/连接状态；现有云同步同样不携带它们。
+- `createArchive({includeSecrets,password})`：先等待 flushSettings 与 flushAnnotations，再创建一致快照、二进制 PDF、SHA-256 清单、异步 ZIP；格式版本 2 包含九表及目录/删除记录，可剥除凭据和加密。includeSecrets=false 时也清空全部基础翻译 keyId/secret/连接状态；现有云同步同样不携带它们。
 - `keyFor`、`encrypt`、`decrypt`（内部）：PBKDF2-SHA256 250000 次，AES-256-GCM；magic `PBRIDGE1` + 16 字节 salt + 12 字节 IV + 密文。
 - `readArchive(blob,password)`：接受格式 1/2，旧版新表补空；验证层级、删除记录所有者、逻辑组根锚点、跨表引用、文件哈希和 PDF 头，全部通过才允许合并。
 - 0.1.2 批注校验新增 strike、shape，校验形状枚举、起止点和可选字号/笔宽；兼容旧记录缺省字段。存档和数据库版本不变，新增记录应使用 0.1.2 或更新版本恢复。
@@ -329,6 +368,8 @@ pdf_translater/
 - `destroy`：捕获并静默保存最后输入，取消全部在途测试，设置 destroyed 标记防止旧回调更新新页面，返回当前写入完成 Promise。
 - 教程链接委托 openExternalWebsite，新标签或宿主系统浏览器；密钥眼睛按钮仅切换 input.type。
 
+API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 padding 0.55rem / 下拉最小高 2.2rem，手机输入 0.6rem / 下拉 2.4rem；其他页面控件不受此规则影响。
+
 ### ui/settings-panel.js
 
 - `providerMenu()`：复用 custom-select 的自绘服务商菜单、逐行厂商 LOGO，选择后 capture 现有草稿再追加新配置。
@@ -360,7 +401,7 @@ pdf_translater/
 | --- | --- |
 | constructor / init | 初始化状态、数据库、界面、持久存储请求、恢复标签/对话和首次引导 |
 | mount / bind / action | 生成静态界面骨架、委托动作、导入拖放、快捷键、尺寸变化 |
-| importFiles | 逐份校验加载 PDF，事务保存后打开；失败不产生半成品 |
+| importFiles(files,{folderId}?) | 逐份校验加载 PDF，事务保存后打开；默认按当前文档库目录导入，外部链接显式 folderId:null 入根目录；失败不产生半成品 |
 | importGenerated | 验证生成的 PDF，保存为共享原文 rootId 的新文档 |
 | openDocument / performOpenDocument / closeDocument | 进行中 Promise 锁定第一次切换，后续点击不打断；加载后复查存在性，关闭只移除标签 |
 | saveWorkspace | 保存标签、活动 PDF 和每个文档活动对话 |
@@ -376,6 +417,13 @@ pdf_translater/
 | reload / refreshAssistant | 导入、设置、云同步后的界面刷新 |
 | prepareLibraryDeletion / afterLibraryDeletion | 等待文件切换和受影响生成任务；删除后清理已删对象的标签/缓存及失效工作区引用 |
 | updateSaved / setSyncStatus | 持久化提交及同步状态展示 |
+
+### pdf-links.js / ui/open-pdf.js
+
+- `parsePdfLink(value,rename?)`：校验 HTTP(S) 完整链接、禁止内嵌凭据、字面及 pathname 均须以 .pdf 结束（忽略大小写）；从重命名或解码 URL 文件名生成安全 basename，归一化固定 .pdf 后缀。返回 `{url,filename}`，不发网络请求。
+- `OpenPdfMenu.toggle/close`：在触发按钮下方显示三项菜单，更新 ARIA、键盘焦点及左右视口约束，点击外部/Esc/尺寸改变时关闭；本地项同步触发已有文件输入。
+- `openLibrary`：读取目录/文档一致快照，复用 folder-tree 布局递归展示可折叠目录、文件按钮；按名称文件夹优先，避免循环，点击文件复用 app.openDocument，进行中禁止重复打开。
+- `openLink`：外部链接/重命名表单及只读后缀；禁用重复提交，fetch 60 秒超时、关闭取消、不携带凭据；下载结束后交给 importFiles 验证/密码流程并显式入根目录。失败不产生占位文件；成功打开沿用原阅读器和文档管理。
 
 ### ui/pdf-navigation.js 的 PdfNavigation
 
@@ -407,6 +455,9 @@ pdf_translater/
 | #split-handle | 拖动或方向键调整左右宽度 | desktop.js |
 | #document-tabs / .document-tab | 已打开 PDF 的单行卡片、关闭和激活；页码保留在工具栏 | App.renderTabs |
 | #pdf-input | 隐藏本地多文件选择器 | App.importFiles |
+| [data-action=open-pdf] / .open-pdf-menu / [data-open-pdf] | 阅读栏和手机顶部打开菜单：本地、文档库、链接 | OpenPdfMenu |
+| .open-document-tree / .tree-document | 可折叠文档树、点击已有 PDF 打开 | OpenPdfMenu.openLibrary |
+| #external-pdf-form / .pdf-filename-field / .external-pdf-status | 链接、可选重命名及固定后缀、加载/错误反馈 | OpenPdfMenu.openLink / parsePdfLink |
 | #pdf-toolbar / [data-select=zoom] / #page-input | 阅读缩放、导航、编辑工具、颜色指示和导出 | App.renderToolbar |
 | [data-action=thumbnails] / [data-action=bookmarks] / [data-action=search-pdf] / #pdf-navigation | 统一导航入口；桌面分栏或移动浮窗 | PdfNavigation / App |
 | .pdf-thumbnail / .pdf-bookmark | 缩略图跳页、显式/命名书签跳页 | PdfNavigation |
@@ -434,7 +485,11 @@ pdf_translater/
 | .folder-tree / .folder-create-row | 移动目标树和选中目录内创建子文件夹 | LibraryView.move |
 | .delete-object-list / [data-action=confirm-delete] | 已审核路径清单、明确确认入口 | LibraryView.remove |
 | .record-list / [data-record] | 打开对应 PDF 的全文历史 | App.showRecords |
-| #overlay-root / .modal | 通用焦点受控弹窗、设置、密码和批注输入 | components |
+| #overlay-root / .modal | 通用焦点受控弹窗、设置及密码 | components |
+| .annotation-box / .annotation-input | 原位内容、实体/虚拟边框、双击输入 | TextAnnotations.render/input |
+| .annotation-resize / .annotation-move | 左右宽度及顶部移动手柄 | TextAnnotations.resize / PdfViewer.startAnnotationDrag |
+| .annotation-tools / [data-text-action] | 对象内部定位同步浮栏；尺寸模式四/五按钮，文字模式仅字号增减/删除 | TextAnnotations.showToolbar/action/positionToolbar |
+| .note-anchor / .is-emphasized | 批注同色源文下划线与悬停强调 | PdfViewer.drawAnnotations / TextAnnotations.emphasize |
 | #settings-content / #provider-form | 多 API 配置及能力设置 | settings-panel |
 | [data-action=settings-basic] / [data-select=basic-default] | 基础翻译子页面与默认模型 | BasicSettings |
 | .basic-summary / #basic-body-{id} / .basic-status | 单行折叠标题、展开配置及状态绿点 | BasicSettings.render/status |

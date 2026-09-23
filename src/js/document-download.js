@@ -1,7 +1,9 @@
 import { database } from './storage.js';
+import { flushAnnotations } from './annotation-writes.js';
 
 // Export a consistent snapshot without flattening or changing the editable source.
 export async function editedDocumentBlob(documentId) {
+  await flushAnnotations();
   const tx = (await database()).transaction(['documents', 'files', 'annotations'], 'readonly');
   const [doc, file, rows] = await Promise.all([
     tx.objectStore('documents').get(documentId),

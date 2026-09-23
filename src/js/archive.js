@@ -5,6 +5,7 @@ import { snapshot, mergeSnapshot, get, STORES } from './storage.js';
 import { validateFolderTree } from './library.js';
 import { sha256, safeUrl, bytesToBase64 } from './utils.js';
 import { getSettings, saveSettings, reloadSettings, flushSettings } from './settings.js';
+import { flushAnnotations } from './annotation-writes.js';
 const MAGIC = strToU8('PBRIDGE1');
 const MAX_ARCHIVE = 1024 * 1024 * 1024;
 function makeZip(files) {
@@ -13,7 +14,7 @@ function makeZip(files) {
   );
 }
 export async function createArchive({ includeSecrets = true, password = '' } = {}) {
-  await flushSettings();
+  await Promise.all([flushSettings(), flushAnnotations()]);
   const data = await snapshot();
   const entries = {};
   const digests = {};
@@ -195,6 +196,10 @@ export async function readArchive(blob, password = '') {
             a.rects.some((r) => !unit(r.x) || !unit(r.y) || !unit(r.w) || !unit(r.h)))) ||
         (['text', 'note'].includes(a.type) && (typeof a.text !== 'string' || !unit(a.x) || !unit(a.y))) ||
         (a.fontSize !== undefined && (!Number.isFinite(a.fontSize) || a.fontSize <= 0 || a.fontSize > 144)) ||
+        (a.width !== undefined && (!unit(a.width) || a.width === 0)) ||
+        (a.boxWidth !== undefined && (!Number.isFinite(a.boxWidth) || a.boxWidth <= 0)) ||
+        (a.boxHeight !== undefined && (!Number.isFinite(a.boxHeight) || a.boxHeight <= 0)) ||
+        (a.border !== undefined && typeof a.border !== 'boolean') ||
         (a.strokeWidth !== undefined &&
           (!Number.isFinite(a.strokeWidth) || a.strokeWidth <= 0 || a.strokeWidth > 48)) ||
         (a.type === 'shape' &&

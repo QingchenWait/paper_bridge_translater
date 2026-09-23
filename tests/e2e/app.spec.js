@@ -104,8 +104,8 @@ test('desktop imports, renders, annotates and restores PDFs after reload', async
   );
   await page.getByRole('button', { name: '添加文本框', exact: true }).click();
   await page.locator('.pdf-page[data-page="1"] .ink-layer').click({ position: { x: 200, y: 130 } });
-  await page.locator('#input-form textarea').fill('中文批注：核心方法');
-  await page.locator('#input-form button[type=submit]').click();
+  await page.locator('.annotation-input').fill('中文批注：核心方法');
+  await page.locator('#document-status').click();
   await expect(page.locator('.annotation-text')).toContainText('中文批注');
   await page.getByRole('button', { name: '添加文本框', exact: true }).click();
   await page.screenshot({ path: 'test-results/desktop-reading.png', animations: 'disabled' });
@@ -295,8 +295,8 @@ test('Chinese annotation export is a readable PDF; ink erase and undo persist co
   await page.getByRole('button', { name: '撤销批注 (Ctrl+Z)', exact: true }).click();
   await page.getByRole('button', { name: '添加文本框', exact: true }).click();
   await ink.click({ position: { x: 100, y: 200 } });
-  await page.locator('#input-form textarea').fill('中文导出测试');
-  await page.locator('#input-form button[type=submit]').click();
+  await page.locator('.annotation-input').fill('中文导出测试');
+  await page.locator('#document-status').click();
   const result = await page.evaluate(async () => {
     const { all, get } = await import('/src/js/storage.js');
     const { loadPdf, extractPdfText } = await import('/src/js/pdf.js');
@@ -426,8 +426,8 @@ test('selection-first actions toggle independently and remove only the selected 
   await expect(highlight).toHaveAttribute('aria-pressed', 'true');
   await expect(underline).toHaveAttribute('aria-pressed', 'true');
   await note.click();
-  await page.locator('#input-form textarea').fill('绑定文本的批注');
-  await page.locator('#input-form button[type=submit]').click();
+  await page.locator('.annotation-input').fill('绑定文本的批注');
+  await page.locator('#document-status').click();
   await expect(note).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('.annotation-note')).toHaveCount(1);
   await selectText(page, 'parallel computation');

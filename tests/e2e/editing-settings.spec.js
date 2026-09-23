@@ -136,7 +136,18 @@ test('single, toolbar, folder ZIP and translated-PDF downloads contain edits wit
     .click();
   await expect.poll(() => page.evaluate(() => window.savedBlobs.length)).toBe(3);
   const text = await savedText(page, 2);
-  expect(text).toContain('Saved note');
+  expect(text).not.toContain('Saved note');
+  expect(
+    await page.evaluate(async () => {
+      const { loadPdf } = await import('/src/js/pdf.js');
+      const pdf = await loadPdf(window.savedBlobs[2]);
+      try {
+        return (await (await pdf.getPage(1)).getAnnotations()).map((a) => a.contentsObj?.str || '').join(' ');
+      } finally {
+        await pdf.destroy();
+      }
+    }),
+  ).toContain('Saved note');
   expect(text).toContain('Saved textbox');
   expect(text).not.toContain('Must not export');
   expect(text).not.toContain('Translation edited');

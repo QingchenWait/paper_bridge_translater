@@ -1,5 +1,12 @@
 /* Desktop landscape layout and controls. Mobile overrides live in mobile.css. */
 @media (min-width: 961px) {
+  #provider-form .field input:not([type='checkbox']) {
+    padding: 0.55rem 0.8rem;
+  }
+  #provider-form .select-trigger {
+    min-height: 2.2rem;
+    padding: 0.45rem 0.7rem;
+  }
   .onboarding-modal {
     width: min(44rem, calc(100vw - 2rem));
   }

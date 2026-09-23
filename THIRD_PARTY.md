@@ -9,7 +9,8 @@
 | 同项目 `archive_sync.js` | 备份/WebDAV/CORS/定时同步流程，重写为 PDF 数据库事务合并 | GPL-3.0 |
 | [PDF.js](https://mozilla.github.io/pdf.js/examples/) | 渲染、文本提取、选择层及文字层 CSS | Apache-2.0；版本由 package-lock 固定 |
 | [pdf-lib](https://pdf-lib.js.org/) | 修改和生成 PDF | MIT |
-| [Lucide](https://github.com/lucide-icons/lucide) | `src/_logo/icons` 中 62 个 SVG，使用主分支或 0.468.0 下载版本；0.2.0 新增文件夹/移动/视图/排序七个图标，保留原文件内容 | ISC；见 `src/_logo/LUCIDE-LICENSE` |
+| [@pdf-lib/fontkit](https://github.com/Hopding/fontkit/blob/master/src/subset/CFFSubset.js) | Noto 字体子集；pdf-fonts.js 对已安装 1.1.1 的 CFF 编码作局部兼容适配 | MIT；Devon Govett / Andrew Dillon，见 public/licenses/FONTKIT.txt |
+| [Lucide](https://github.com/lucide-icons/lucide) | `src/_logo/icons` 中 66 个 SVG，使用主分支或 0.468.0 下载版本；0.2.0 新增文件夹/移动/视图/排序七个图标，保留原文件内容 | ISC；见 `src/_logo/LUCIDE-LICENSE` |
 | [Lobe Icons](https://github.com/lobehub/lobe-icons/tree/2e76c48721e91b9aaa40803a0fa2eb8aca7399c4/packages/static-svg/icons) | `src/_logo/llms` 七家厂商 LOGO，源文件分别为 deepseek-color、xiaomimimo、qwen-color、openai、zhipu-color、kimi-color、lmstudio，2026-09-23 直接下载，未重绘 | MIT；见 `src/_logo/LOBE-ICONS-LICENSE`；产品标识归对应品牌所有 |
 | [Fluent Emoji](https://github.com/microsoft/fluentui-emoji) | `src/_logo/art/open-book.png` 与 `sparkles.png`，3D 插画 | MIT；见 `src/_logo/FLUENT-LICENSE` |
 | [Noto CJK](https://github.com/notofonts/noto-cjk) | `public/fonts/NotoSansSC-Regular.otf`，按需加载的批注中文字体 | SIL OFL 1.1；见 `public/fonts/LICENSE` |
@@ -19,6 +20,15 @@
 | idb、fflate、html2canvas、fontkit | 存储、存档、视觉 PDF、字体子集 | 各包原许可证保留于依赖目录 |
 
 素材下载脚本为 `tools/download-assets.ps1`。源图标并未重绘；CSS 只调整显示尺寸、颜色滤镜和透明度。UI 参考图和规则来自用户提供的 `src/ui_rules`。
+
+## PDF 注释参考与验证
+
+- [Adobe 发布的 ISO 32000-1 PDF 参考](https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf)，12.5.6.10 / 12.5.6.13 / 12.5.6.14：文字标记注释、Contents、QuadPoints、Ink/InkList 和 Popup/Parent。
+- [Adobe CFF 格式规范](https://adobe-type-tools.github.io/font-tech-notes/pdfs/5176.CFF.pdf)：文件头 offSize 合法范围、FDArray/FDSelect、局部 Subrs。与上游 CFFSubset.js 源码对照，修复原 Noto 字体子集编码，未更换字体。
+- [PDF.js 注释解析器](https://github.com/mozilla/pdf.js/blob/master/src/core/annotation.js)：UnderlineAnnotation、PopupAnnotation、Unicode 内容与外观读取，采用实际库回读验证。
+- [PDFium 弹窗创建](https://github.com/chromium/pdfium/blob/main/core/fpdfdoc/cpdf_annotlist.cpp) 与 [弹窗外观生成](https://github.com/chromium/pdfium/blob/main/core/fpdfdoc/cpdf_generateap.cpp)：Chrome 忽略文件内 Popup 并创建自有弹窗，GenerateFallbackFontDict 使用 WinAnsi，解释本轮实测的中文漏显；没有通过压平批注内容来伪装兼容。
+- 新增 move、rotate-ccw、a-arrow-up、a-arrow-down 四个 Lucide 0.468.0 图标，原始下载文件保留在 src/_logo/icons。
+- 开发期使用临时目录中的 PyMuPDF 1.28.2 独立检查导出文件及渲染，不引入静态应用依赖、不打包其 Python 代码。Chrome 实测为本机临时浏览器资料；未运行 Acrobat。
 
 ## API 官方参考
 
@@ -37,4 +47,4 @@
 - [百度领域翻译](https://fanyi-api.baidu.com/product/123) / [百度通用翻译](https://fanyi-api.baidu.com/product/113)：academic 中英领域、MD5 拼接顺序、语言映射；直接请求验证两个官方端点的 JSONP 回调。
 - [火山文本翻译](https://docs.volcengine.com/docs/MachineTranslation/TextTranslationAPI) / [官方签名器](https://github.com/volcengine/volc-sdk-python/blob/master/volcengine/auth/SignerV4.py)：POST TextList、TranslationList，地域 cn-north-1、服务 translate 及 HMAC-SHA256 V4 签名。
 
-外部接口文档在开发时核对；依赖和图标均本地打包；百度翻译请求会加载其官方 API 的 JSONP 数据回调脚本。只有用户发起在线翻译、问答或云同步时访问对应外部服务。
+外部接口文档在开发时核对；依赖和图标均本地打包；百度翻译请求会加载其官方 API 的 JSONP 数据回调脚本。用户发起在线翻译、问答、云同步或外部 PDF 下载时访问对应外部服务。

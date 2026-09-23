@@ -29,16 +29,13 @@ test('multiple marks report independent pressed states and remove only selected 
   assert.ok(Math.abs(changes[0].after.rects[1].x - 0.45) < 0.00001);
   assert.equal(selectionActionState([changes[0].after], selection).highlight, false);
 });
-test('multi-page note actions preserve anchors and cancellation creates no changes', async () => {
+test('multi-page notes preserve anchors and start empty for inline input', async () => {
   const selection = { text: 'across pages', rects: [rect, { ...rect, page: 2 }] };
   const notes = await planSelectionAction('note', [], selection, context);
   assert.equal(notes.length, 2);
   assert.equal(notes[1].after.page, 2);
-  assert.equal(notes[0].after.text, '批注内容');
-  assert.deepEqual(
-    await planSelectionAction('note', [], selection, { ...context, inputText: async () => null }),
-    [],
-  );
+  assert.equal(notes[0].after.text, '');
+  assert.equal(notes[0].after.selectedText, 'across pages');
   const cleared = await planSelectionAction(
     'note',
     notes.map((c) => c.after),

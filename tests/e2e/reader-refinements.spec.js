@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { PDFDocument, StandardFonts, PDFName, degrees } from 'pdf-lib';
-import fontkit from '@pdf-lib/fontkit';
 import { readFile } from 'node:fs/promises';
+import { notoFontkit, repairNotoCffFonts } from '../../src/js/pdf-fonts.js';
 const sentence = 'Alpha beta Alpha alphabet. Needle NEEDLE needle. WWW iii office';
 async function fixture() {
   const pdf = await PDFDocument.create();
@@ -323,11 +323,13 @@ test('embedded Chinese fonts and high-DPI text layers use the same glyph advance
   baseURL,
 }) => {
   const pdf = await PDFDocument.create();
-  pdf.registerFontkit(fontkit);
+  pdf.registerFontkit(notoFontkit);
   const font = await pdf.embedFont(await readFile('public/fonts/NotoSansSC-Regular.otf'), { subset: true });
   const text = '中文 Needle 选区';
   pdf.addPage([612, 792]).drawText(text, { x: 60, y: 650, size: 18, font });
   const expected = [...text].reduce((sum, char) => sum + font.widthOfTextAtSize(char, 18), 0);
+  await pdf.flush();
+  await repairNotoCffFonts(pdf);
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
   const page = await context.newPage();
   try {

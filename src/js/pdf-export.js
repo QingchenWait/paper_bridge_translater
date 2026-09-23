@@ -1,7 +1,8 @@
 import { PDFDocument, rgb, degrees } from 'pdf-lib';
-import fontkit from '@pdf-lib/fontkit';
 import { mountMarkdown } from './markdown.js';
 import { shapeGeometry } from './shapes.js';
+import { appendPdfNote, appendPdfMark, wrapAnnotationText } from './pdf-comments.js';
+import { notoFontkit, repairNotoCffFonts } from './pdf-fonts.js';
 const color = (value) => {
   const hex = value.replace('#', '');
   return rgb(
@@ -21,11 +22,12 @@ async function loadFont() {
 }
 export async function exportAnnotatedPdf(blob, annotations, sourcePdf) {
   const pdf = await PDFDocument.load(await blob.arrayBuffer());
-  pdf.registerFontkit(fontkit);
-  const active = annotations.filter((a) => !a.deleted);
+  pdf.registerFontkit(notoFontkit);
+  const active = annotations.filter(
+    (a) => !a.deleted && (!['note', 'text'].includes(a.type) || a.text?.trim()),
+  );
   let font;
-  if (active.some((a) => ['note', 'text'].includes(a.type)))
-    font = await pdf.embedFont(await loadFont(), { subset: true });
+  if (active.some((a) => a.type === 'text')) font = await pdf.embedFont(await loadFont(), { subset: true });
   for (const annotation of active) {
     const page = pdf.getPage(annotation.page - 1);
     const source = await sourcePdf.getPage(annotation.page);
@@ -34,37 +36,9 @@ export async function exportAnnotatedPdf(blob, annotations, sourcePdf) {
       const [px, py] = viewport.convertToPdfPoint(x * viewport.width, y * viewport.height);
       return { x: px, y: py };
     };
-    if (['highlight', 'underline', 'strike'].includes(annotation.type))
-      for (const rect of annotation.rects) {
-        if (annotation.type === 'underline' || annotation.type === 'strike')
-          page.drawLine({
-            start: point(rect.x, rect.y + rect.h * (annotation.type === 'strike' ? 0.5 : 1)),
-            end: point(rect.x + rect.w, rect.y + rect.h * (annotation.type === 'strike' ? 0.5 : 1)),
-            color: color(annotation.color),
-            thickness: 1,
-          });
-        else {
-          const p1 = point(rect.x, rect.y);
-          const p2 = point(rect.x + rect.w, rect.y + rect.h);
-          page.drawRectangle({
-            x: Math.min(p1.x, p2.x),
-            y: Math.min(p1.y, p2.y),
-            width: Math.abs(p2.x - p1.x),
-            height: Math.abs(p2.y - p1.y),
-            color: color(annotation.color),
-            opacity: 0.3,
-            blendMode: 'Multiply',
-          });
-        }
-      }
-    else if (annotation.type === 'pen')
-      for (let i = 1; i < annotation.points.length; i++)
-        page.drawLine({
-          start: point(annotation.points[i - 1].x, annotation.points[i - 1].y),
-          end: point(annotation.points[i].x, annotation.points[i].y),
-          color: color(annotation.color),
-          thickness: annotation.strokeWidth || 1.6,
-        });
+    if (annotation.type === 'note') appendPdfNote(pdf, page, annotation, viewport);
+    else if (['highlight', 'underline', 'strike', 'pen'].includes(annotation.type))
+      appendPdfMark(pdf, page, annotation, viewport);
     else if (annotation.type === 'shape') {
       const geometry = shapeGeometry(annotation, viewport.width, viewport.height);
       const convert = (p) => point(p.x / viewport.width, p.y / viewport.height);
@@ -99,19 +73,56 @@ export async function exportAnnotatedPdf(blob, annotations, sourcePdf) {
             thickness: borderWidth,
           });
     } else {
-      const size = annotation.fontSize || 12;
-      const p = point(annotation.x, annotation.y + size / viewport.height);
-      page.drawText(annotation.text, {
-        ...p,
-        font,
-        size,
-        color: color(annotation.color),
-        rotate: degrees(source.rotate),
-        maxWidth: Math.max(40, viewport.width * (1 - annotation.x) - 12),
-        lineHeight: size * 1.35,
+      const size = annotation.fontSize || 14;
+      const unit = source.userUnit || 1,
+        padding = annotation.border ? 3 : 2;
+      const natural = annotation.text
+        .split('\n')
+        .reduce(
+          (width, line) =>
+            Math.max(width, font.widthOfTextAtSize(line, size / unit) * unit + padding * 2 + 1),
+          48,
+        );
+      const width = Math.min(
+        (1 - annotation.x) * viewport.width,
+        annotation.width ? annotation.width * viewport.width : Math.min(0.45 * viewport.width, natural),
+      );
+      const lines = wrapAnnotationText(
+        annotation.text,
+        (text) => font.widthOfTextAtSize(text, size / unit),
+        Math.max(1, (width - padding * 2) / unit),
+      );
+      if (annotation.border) {
+        const height = lines.length * size * 1.45 + padding * 2;
+        const a = point(annotation.x, annotation.y),
+          b = point(annotation.x + width / viewport.width, annotation.y + height / viewport.height);
+        page.drawRectangle({
+          x: Math.min(a.x, b.x),
+          y: Math.min(a.y, b.y),
+          width: Math.abs(b.x - a.x),
+          height: Math.abs(b.y - a.y),
+          borderColor: color(annotation.color),
+          borderWidth: 1 / unit,
+        });
+      }
+      lines.forEach((line, index) => {
+        const p = point(
+          annotation.x + padding / viewport.width,
+          annotation.y + (padding + size + index * size * 1.45) / viewport.height,
+        );
+        if (line)
+          page.drawText(line, {
+            ...p,
+            font,
+            size: size / unit,
+            color: color(annotation.color),
+            rotate: degrees(source.rotate),
+          });
       });
     }
   }
+  await pdf.flush();
+  await repairNotoCffFonts(pdf, loadFont);
   return new Blob([await pdf.save()], { type: 'application/pdf' });
 }
 export async function markdownToPdf(text, onProgress = () => {}) {

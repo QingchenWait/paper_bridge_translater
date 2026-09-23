@@ -239,8 +239,8 @@ test('cold PDF export chooses its destination before lazy loading or conversion 
   await setup(page, ['Cold.pdf']);
   await page.getByRole('button', { name: '添加文本框', exact: true }).click();
   await page.locator('.pdf-page[data-page="1"] .ink-layer').click({ position: { x: 100, y: 160 } });
-  await page.locator('#input-form textarea').fill('Cold export');
-  await page.locator('#input-form button[type=submit]').click();
+  await page.locator('.annotation-input').fill('Cold export');
+  await page.locator('#document-status').click();
   let release;
   await page.route('**/src/js/pdf-export.js*', async (route) => {
     await new Promise((resolve) => (release = resolve));

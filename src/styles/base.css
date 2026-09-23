@@ -746,6 +746,217 @@ img {
 .annotation-text:hover {
   background: #ece8ff70;
 }
+.annotation-box {
+  max-width: none;
+  min-width: 0;
+}
+.annotation-box.is-selected,
+.annotation-box.is-editing {
+  z-index: 8;
+  outline: 1.5px solid #6488e9;
+  outline-offset: 1px;
+}
+.annotation-text.is-editing {
+  outline-style: dashed;
+}
+.annotation-text.has-border {
+  border: var(--annotation-stroke, 1px) solid var(--annotation-color);
+}
+.annotation-note {
+  border-width: var(--annotation-stroke, 1px);
+}
+.annotation-note.is-emphasized {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--annotation-color) 25%, transparent),
+    0 0 14px color-mix(in srgb, var(--annotation-color) 45%, transparent);
+}
+.note-anchor {
+  border-bottom: 1.5px solid var(--mark-color);
+}
+.annotation-content {
+  font: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.annotation-input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 1.45em;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  line-height: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  box-shadow: none;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  touch-action: auto;
+}
+.annotation-input:focus {
+  box-shadow: none;
+  border: 0;
+}
+.annotation-resize,
+.annotation-move {
+  display: none;
+  position: absolute;
+  padding: 0;
+  touch-action: none;
+  z-index: 2;
+}
+.annotation-box.is-selected:not(.is-editing) .annotation-resize,
+.annotation-box.is-selected:not(.is-editing) .annotation-move {
+  display: grid;
+  place-items: center;
+}
+.annotation-resize {
+  width: 24px;
+  height: 28px;
+  top: calc(50% - 14px);
+  background: transparent;
+  cursor: ew-resize;
+}
+.annotation-resize:after {
+  content: '';
+  width: 11px;
+  height: 11px;
+  border: 2px solid #6488e9;
+  border-radius: 50%;
+  background: white;
+}
+.annotation-resize.left {
+  left: -13px;
+}
+.annotation-resize.right {
+  right: -13px;
+}
+.annotation-move {
+  width: 28px;
+  height: 28px;
+  top: -33px;
+  left: calc(50% - 14px);
+  border-radius: 50%;
+  background: #6488e9;
+  cursor: grab;
+}
+.annotation-move .icon {
+  filter: brightness(0) invert(1);
+  opacity: 1;
+  width: 18px;
+  height: 18px;
+}
+.annotation-tools {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 0.65rem;
+  background: #fffffff5;
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(10px);
+  transition: none;
+}
+.pdf-page:has(.annotation-box.is-selected) {
+  z-index: 2;
+}
+.open-pdf-menu {
+  position: fixed;
+  z-index: 95;
+  width: min(15rem, calc(100vw - 16px));
+  padding: 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #fffffff5;
+  box-shadow: var(--shadow-floating);
+}
+.open-pdf-menu button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.5rem;
+  text-align: left;
+  font-size: 0.85rem;
+}
+.open-pdf-menu button:hover,
+.open-pdf-menu button:focus-visible {
+  background: #f0edff;
+}
+.open-document-tree button.tree-document {
+  width: 100%;
+  background: transparent;
+  text-align: left;
+  color: var(--color-text);
+}
+.open-document-tree button.tree-document:hover {
+  background: #f0edff;
+}
+.open-document-tree .tree-folder > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.open-document-tree [aria-expanded='false'] > .icon:first-child {
+  transform: rotate(-90deg);
+}
+#external-pdf-form .field + .field {
+  margin-top: 1rem;
+}
+.pdf-filename-field {
+  display: flex;
+  align-items: stretch;
+}
+.pdf-filename-field input {
+  flex: 1;
+  min-width: 0;
+  border-radius: 0.6rem 0 0 0.6rem;
+}
+.pdf-filename-field > span {
+  display: grid;
+  place-items: center;
+  padding: 0 0.8rem;
+  background: #f0f1fa;
+  border: 1px solid var(--color-border);
+  border-left: 0;
+  border-radius: 0 0.6rem 0.6rem 0;
+  color: var(--color-text-muted);
+}
+.external-pdf-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.external-pdf-status.error {
+  color: #c04c5b;
+}
+.annotation-tools .icon-button {
+  width: 30px;
+  height: 30px;
+  min-height: 0;
+  border-radius: 0.4rem;
+}
+.annotation-tools .icon {
+  width: 17px;
+  height: 17px;
+}
+.annotation-tools .danger .icon {
+  filter: invert(44%) sepia(56%) saturate(917%) hue-rotate(314deg);
+}
+.annotation-tools [aria-pressed='true'] {
+  background: #ece9ff;
+}
 .annotation-shape-handle {
   position: absolute;
   z-index: 3;

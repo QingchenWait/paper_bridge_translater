@@ -78,8 +78,8 @@ try {
   await page.locator('.pdf-page .textLayer span').first().waitFor();
   await page.getByRole('button', { name: '添加文本框', exact: true }).click();
   await page.locator('.pdf-page .ink-layer').click({ position: { x: 100, y: 180 } });
-  await page.locator('#input-form textarea').fill('静态部署中文批注');
-  await page.locator('#input-form button[type=submit]').click();
+  await page.locator('.annotation-input').fill('静态部署中文批注');
+  await page.locator('#document-status').click();
   await page.locator('.annotation-text').waitFor();
   const downloading = page.waitForEvent('download');
   await page.getByRole('button', { name: '下载包含批注的 PDF' }).click();

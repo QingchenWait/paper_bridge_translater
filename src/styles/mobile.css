@@ -1,5 +1,42 @@
 /* Independent portrait layout. Pane switching is handled by ui/mobile.js. */
 @media (max-width: 960px) {
+  .open-pdf-menu button {
+    min-height: 2.9rem;
+  }
+  .open-document-tree button {
+    min-height: 2.9rem;
+  }
+  #provider-form .field input:not([type='checkbox']) {
+    padding: 0.6rem 0.75rem;
+  }
+  #provider-form .select-trigger {
+    min-height: 2.4rem;
+    padding: 0.5rem 0.7rem;
+  }
+  .annotation-tools {
+    gap: 4px;
+  }
+  .annotation-tools .icon-button {
+    width: 36px;
+    height: 36px;
+  }
+  .annotation-resize {
+    width: 32px;
+    height: 36px;
+    top: calc(50% - 18px);
+  }
+  .annotation-resize.left {
+    left: -17px;
+  }
+  .annotation-resize.right {
+    right: -17px;
+  }
+  .annotation-move {
+    width: 32px;
+    height: 32px;
+    top: -37px;
+    left: calc(50% - 16px);
+  }
   #settings-content > .section-heading:has(.api-heading-actions) {
     flex-wrap: wrap;
     gap: 0.85rem;

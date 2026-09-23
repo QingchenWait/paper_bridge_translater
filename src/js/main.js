@@ -9,6 +9,7 @@ import { isSelectionAction } from './selection-actions.js';
 import { SHAPES } from './shapes.js';
 import { PdfNavigation } from './ui/pdf-navigation.js';
 import { LibraryView } from './ui/library.js';
+import { OpenPdfMenu } from './ui/open-pdf.js';
 import { esc, sizeLabel, dateLabel, chooseSaveTarget, saveFile, errorMessage } from './utils.js';
 import {
   icon,
@@ -60,6 +61,7 @@ class App {
   async init() {
     this.mount();
     this.library = new LibraryView(this, document.getElementById('library-view'));
+    this.openPdfMenu = new OpenPdfMenu(this);
     window.addEventListener('storage-blocked', () =>
       toast('数据库升级正在等待，请关闭其他打开旧版本的纸间标签页后重试。', 'error'),
     );
@@ -73,16 +75,6 @@ class App {
       historyState: (state) => this.updateHistoryButtons(state),
       page: (page) => this.setPage(page),
       saved: () => this.updateSaved(),
-      inputText: (type) =>
-        inputDialog(type === 'note' ? '添加批注' : '添加文本框', { multiline: true, label: '输入内容' }),
-      editAnnotation: async (annotation) => {
-        const value = await inputDialog('编辑批注', {
-          value: annotation.text,
-          multiline: true,
-          remove: true,
-        });
-        return value === null ? null : typeof value === 'object' ? value : { text: value };
-      },
     });
     this.assistant = new Assistant(this);
     this.navigation = new PdfNavigation(document.getElementById('pdf-navigation'), {
@@ -149,7 +141,7 @@ class App {
   }
   mount() {
     document.getElementById('app').innerHTML =
-      `<aside class="sidebar"><a class="brand" href="#" aria-label="纸间主页"><span class="brand-symbol">${icon('book-open')}</span><span class="brand-name">纸间<span>PAPER BRIDGE</span></span></a><nav class="main-nav">${button('reader', 'book-open', 'PDF 翻译', 'nav-item active')}${button('library', 'folder-open', '文档管理', 'nav-item')}${button('records', 'history', '翻译记录', 'nav-item')}</nav><div class="sidebar-bottom">${button('cloud', 'cloud', '云同步', 'nav-item')}${button('settings', 'settings-2', '设置', 'nav-item')}${button('help', 'circle-help', '使用帮助', 'nav-item')}<span class="version">v0.3.0</span></div></aside><main class="main-shell"><header class="mobile-header"><span>${icon('book-open')}纸间</span>${iconButton('upload', 'plus', '打开 PDF')}</header><div class="workspace" id="workspace"><aside id="pdf-navigation" class="pdf-navigation" aria-label="PDF 导航" hidden></aside><section class="reader-panel" aria-label="PDF 阅读区"><div class="document-bar"><div id="document-tabs" class="document-tabs"></div>${button('upload', 'plus', '打开 PDF', 'open-pdf')}</div><div class="toolbar" id="pdf-toolbar"></div><div class="reader-body"><div class="pdf-scroll" id="pdf-scroll"></div><div class="reader-empty" id="reader-empty"><div class="empty-book"><img src="${illustration('open-book')}" alt="打开的书"></div><div class="empty-caption">YOUR NEXT GREAT IDEA STARTS HERE</div><h1>翻开一页，<br>遇见更大的世界。</h1><p>将 PDF 拖到这里，开始一场没有语言边界的阅读。</p>${button('upload', 'upload', '打开本地 PDF', 'primary large')}<span class="upload-hint">支持多份文档 · 自动保存阅读进度</span><div class="empty-features"><span>${icon('highlighter')}随手批注</span><span>${icon('languages')}划词即译</span><span>${icon('sparkles')}AI 问答</span></div></div></div><footer class="reader-status"><span id="document-status">一张书桌，无限可能</span><span id="save-status">${icon('shield-check')}本地自动保存</span></footer></section><div class="split-handle" id="split-handle" role="separator" aria-label="调整左右栏宽度" aria-orientation="vertical" tabindex="0"></div><section class="assistant-panel" aria-label="翻译与 AI 助手"><header class="assistant-header"><div class="segmented" role="tablist"><button data-assistant-tab="selection" class="active" role="tab" aria-selected="true">划词翻译</button><button data-assistant-tab="full" role="tab" aria-selected="false">全文翻译</button><button data-assistant-tab="chat" role="tab" aria-selected="false">AI 问答</button></div><button id="translation-settings" class="translation-settings" title="翻译设置" aria-label="翻译设置">${icon('settings-2')}<span>翻译设置</span>${icon('chevron-down')}</button></header><div id="assistant-content" class="assistant-content"></div></section></div><section id="library-view" class="library-view" hidden></section><nav class="mobile-nav"><button class="active" data-mobile-pane="reader">${icon('book-open')}阅读</button><button data-mobile-pane="assistant">${icon('languages')}翻译 / AI</button>${button('library', 'folder-open', '文档')}${button('settings', 'settings-2', '设置')}</nav></main><div id="color-popover" class="color-popover" hidden></div>`;
+      `<aside class="sidebar"><a class="brand" href="#" aria-label="纸间主页"><span class="brand-symbol">${icon('book-open')}</span><span class="brand-name">纸间<span>PAPER BRIDGE</span></span></a><nav class="main-nav">${button('reader', 'book-open', 'PDF 翻译', 'nav-item active')}${button('library', 'folder-open', '文档管理', 'nav-item')}${button('records', 'history', '翻译记录', 'nav-item')}</nav><div class="sidebar-bottom">${button('cloud', 'cloud', '云同步', 'nav-item')}${button('settings', 'settings-2', '设置', 'nav-item')}${button('help', 'circle-help', '使用帮助', 'nav-item')}<span class="version">v0.3.1</span></div></aside><main class="main-shell"><header class="mobile-header"><span>${icon('book-open')}纸间</span>${iconButton('open-pdf', 'plus', '打开 PDF')}</header><div class="workspace" id="workspace"><aside id="pdf-navigation" class="pdf-navigation" aria-label="PDF 导航" hidden></aside><section class="reader-panel" aria-label="PDF 阅读区"><div class="document-bar"><div id="document-tabs" class="document-tabs"></div><button type="button" class="button open-pdf" data-action="open-pdf" aria-label="打开 PDF" aria-haspopup="menu" aria-expanded="false">${icon('plus')}<span>打开 PDF</span></button></div><div class="toolbar" id="pdf-toolbar"></div><div class="reader-body"><div class="pdf-scroll" id="pdf-scroll"></div><div class="reader-empty" id="reader-empty"><div class="empty-book"><img src="${illustration('open-book')}" alt="打开的书"></div><div class="empty-caption">YOUR NEXT GREAT IDEA STARTS HERE</div><h1>翻开一页，<br>遇见更大的世界。</h1><p>将 PDF 拖到这里，开始一场没有语言边界的阅读。</p>${button('upload', 'upload', '打开本地 PDF', 'primary large')}<span class="upload-hint">支持多份文档 · 自动保存阅读进度</span><div class="empty-features"><span>${icon('highlighter')}随手批注</span><span>${icon('languages')}划词即译</span><span>${icon('sparkles')}AI 问答</span></div></div></div><footer class="reader-status"><span id="document-status">一张书桌，无限可能</span><span id="save-status">${icon('shield-check')}本地自动保存</span></footer></section><div class="split-handle" id="split-handle" role="separator" aria-label="调整左右栏宽度" aria-orientation="vertical" tabindex="0"></div><section class="assistant-panel" aria-label="翻译与 AI 助手"><header class="assistant-header"><div class="segmented" role="tablist"><button data-assistant-tab="selection" class="active" role="tab" aria-selected="true">划词翻译</button><button data-assistant-tab="full" role="tab" aria-selected="false">全文翻译</button><button data-assistant-tab="chat" role="tab" aria-selected="false">AI 问答</button></div><button id="translation-settings" class="translation-settings" title="翻译设置" aria-label="翻译设置">${icon('settings-2')}<span>翻译设置</span>${icon('chevron-down')}</button></header><div id="assistant-content" class="assistant-content"></div></section></div><section id="library-view" class="library-view" hidden></section><nav class="mobile-nav"><button class="active" data-mobile-pane="reader">${icon('book-open')}阅读</button><button data-mobile-pane="assistant">${icon('languages')}翻译 / AI</button>${button('library', 'folder-open', '文档')}${button('settings', 'settings-2', '设置')}</nav></main><div id="color-popover" class="color-popover" hidden></div>`;
   }
   bind() {
     window.addEventListener(
@@ -258,6 +250,7 @@ class App {
   }
   async action(action, target) {
     if (action === 'upload') document.getElementById('pdf-input').click();
+    else if (action === 'open-pdf') this.openPdfMenu.toggle(target);
     else if (action === 'reader') this.showReader();
     else if (action === 'library') await this.showLibrary();
     else if (action === 'records') await this.showRecords();
@@ -281,8 +274,10 @@ class App {
     } else if (action.startsWith('tool-')) await this.setTool(action.slice(5));
     else if (action.startsWith('color-')) this.colorPicker(action.slice(6), target);
   }
-  async importFiles(files) {
-    const folderId = document.documentElement.dataset.view === 'library' ? this.library.folderId : null;
+  async importFiles(
+    files,
+    { folderId = document.documentElement.dataset.view === 'library' ? this.library.folderId : null } = {},
+  ) {
     for (const file of [...files]) {
       if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
         toast(`${file.name} 不是 PDF 文件`, 'error');
@@ -376,6 +371,7 @@ class App {
     document.getElementById('document-status').textContent = `${doc.pages} 页 · ${sizeLabel(doc.size)}`;
   }
   async closeDocument(id) {
+    await this.viewer.textAnnotations.finish();
     this.openIds = this.openIds.filter((value) => value !== id);
     if (this.activeId === id) {
       if (this.openIds.length) await this.openDocument(this.openIds.at(-1));

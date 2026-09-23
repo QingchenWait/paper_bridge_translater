@@ -1,11 +1,13 @@
 import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { all, put, patch, get, database } from './storage.js';
+import { all, put, patch, get } from './storage.js';
 import { uid } from './utils.js';
 import { planSelectionAction, selectionActionState } from './selection-actions.js';
 import { drawShape, shapeGeometry, hitShape, translateAnnotation, distanceToSegment } from './shapes.js';
 import { renderAlignedText } from './pdf-text.js';
 import { indexPageText, findPageMatches } from './pdf-search.js';
+import { TextAnnotations } from './text-annotations.js';
+import { writeAnnotations } from './annotation-writes.js';
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 const base = import.meta.env.BASE_URL;
 export async function loadPdf(blob, onPassword) {
@@ -75,6 +77,7 @@ export class PdfViewer {
     this.pointers = new Set();
     this.selectionPointers = new Set();
     this.touchCount = 0;
+    this.textAnnotations = new TextAnnotations(this);
     document.addEventListener(
       'pointerdown',
       (event) => {
@@ -183,6 +186,7 @@ export class PdfViewer {
     this.drawingOptions = { ...this.drawingOptions, ...options };
   }
   async open(doc, pdf) {
+    await this.textAnnotations.finish();
     this.cancelAnnotationDrag?.();
     this.generation++;
     this.observer?.disconnect();
@@ -204,6 +208,7 @@ export class PdfViewer {
     this.notifyHistory();
   }
   async layout() {
+    await this.textAnnotations.finish();
     this.cancelAnnotationDrag?.();
     this.clearSelection();
     const generation = ++this.generation;
@@ -238,6 +243,8 @@ export class PdfViewer {
           if (entry.isIntersecting)
             this.renderPage(number, generation).catch((error) => this.callbacks.error(error));
           else if (this.rendered.has(number)) {
+            if (this.textAnnotations.active?.page === number)
+              this.textAnnotations.finish().catch(this.callbacks.error);
             this.tasks.get(number)?.cancel();
             entry.target.replaceChildren();
             this.rendered.delete(number);
@@ -442,6 +449,7 @@ export class PdfViewer {
       );
   }
   captureSelection({ translate = false } = {}) {
+    if (this.textAnnotations.editing()) return;
     const selection = window.getSelection();
     if (!selection?.rangeCount || selection.isCollapsed) {
       this.clearSelection(false);
@@ -525,10 +533,14 @@ export class PdfViewer {
     try {
       const changes = await planSelectionAction(type, this.annotations, selection, {
         color,
-        inputText: this.callbacks.inputText,
         fontSize: this.drawingOptions.noteSize,
       });
       if (!changes.length || this.doc.id !== documentId) return false;
+      if (type === 'note' && changes.every((change) => !change.before)) {
+        this.clearSelection();
+        this.textAnnotations.begin(changes.map((change) => change.after));
+        return true;
+      }
       const now = Date.now();
       for (const change of changes) {
         change.after = {
@@ -555,9 +567,7 @@ export class PdfViewer {
     }
   }
   async commitAnnotationChanges(rows) {
-    const tx = (await database()).transaction('annotations', 'readwrite');
-    for (const row of rows) await tx.store.put({ ...row, updatedAt: Date.now() });
-    await tx.done;
+    await writeAnnotations(rows);
     for (const row of rows) {
       if (row.documentId !== this.doc.id) continue;
       const i = this.annotations.findIndex((a) => a.id === row.id);
@@ -605,6 +615,7 @@ export class PdfViewer {
   }
   async undo(redo = false) {
     if (this.historyBusy || !this.doc) return;
+    this.textAnnotations.finish().catch(this.callbacks.error);
     this.cancelAnnotationDrag?.();
     const from = redo ? this.future : this.history;
     const to = redo ? this.history : this.future;
@@ -647,24 +658,15 @@ export class PdfViewer {
     }
   }
   async editAnnotation(annotation) {
-    const result = await this.callbacks.editAnnotation(annotation);
-    if (!result) return;
-    const row = await patch('annotations', annotation.id, result);
-    this.history.set(annotation.documentId, [
-      ...(this.history.get(annotation.documentId) || []),
-      { changes: [{ before: structuredClone(annotation), after: row }] },
-    ]);
-    this.future.set(annotation.documentId, []);
-    this.notifyHistory();
-    this.annotations = this.annotations.map((a) => (a.id === row.id ? row : a));
-    this.drawAnnotations(row.page);
-    this.callbacks.saved();
+    this.textAnnotations.edit(annotation);
   }
   startAnnotationDrag(event, page) {
     if (
       event.button !== 0 ||
       this.annotationDrag ||
       this.tool === 'eraser' ||
+      event.target.closest('.annotation-input, [data-resize]') ||
+      this.textAnnotations.editing() ||
       this.container.classList.contains('selecting-text') ||
       this.shapeMenuPointer === event
     )
@@ -705,7 +707,7 @@ export class PdfViewer {
       h: (elementBounds?.height || 0) / bounds.height,
     };
     const drag = (this.annotationDrag = { before, after: before, moved: false });
-    shell.setPointerCapture(event.pointerId);
+    if (annotation.type === 'shape') shell.setPointerCapture(event.pointerId);
     shell.classList.add('annotation-dragging');
     const cleanup = () => {
       shell.removeEventListener('pointermove', move);
@@ -722,6 +724,7 @@ export class PdfViewer {
         dy = e.clientY - start.y;
       if (!drag.moved && Math.hypot(dx, dy) < 3) return;
       drag.moved = true;
+      if (!shell.hasPointerCapture(event.pointerId)) shell.setPointerCapture(event.pointerId);
       drag.after = translateAnnotation(before, dx / bounds.width, dy / bounds.height, box);
       this.annotations = this.annotations.map((a) => (a.id === before.id ? drag.after : a));
       this.drawAnnotations(page);
@@ -735,7 +738,11 @@ export class PdfViewer {
       if (e.pointerId !== event.pointerId) return;
       cleanup();
       if (!drag.moved) {
-        if (before.type !== 'shape') this.editAnnotation(before).catch(this.callbacks.error);
+        if (before.type !== 'shape')
+          this.textAnnotations.select(
+            this.annotations.find((a) => a.id === before.id),
+            e,
+          );
         return;
       }
       try {
@@ -763,10 +770,18 @@ export class PdfViewer {
     const layer = shell?.querySelector('.annotations');
     const canvas = shell?.querySelector('.ink-layer');
     if (!layer || !canvas) return;
-    layer.replaceChildren();
+    const rows = this.annotations.filter(
+      (a) => a.page === pageNumber && (!a.deleted || this.textAnnotations.editing(a.id)),
+    );
+    for (const element of [...layer.children])
+      if (
+        !element.classList.contains('annotation-box') ||
+        !rows.some((a) => a.id === element.dataset.annotationId)
+      )
+        element.remove();
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    for (const annotation of this.annotations.filter((a) => a.page === pageNumber && !a.deleted)) {
+    for (const annotation of rows) {
       if (annotation.type === 'pen' || annotation.type === 'shape') {
         const width = Number(shell.dataset.baseWidth),
           height = Number(shell.dataset.baseHeight);
@@ -838,20 +853,21 @@ export class PdfViewer {
           layer.append(element);
         }
       } else {
-        const element = document.createElement('button');
-        element.className = `annotation-${annotation.type}`;
-        element.dataset.annotationId = annotation.id;
-        element.textContent = annotation.text;
-        element.title = '点击编辑批注';
-        element.style.left = `${annotation.x * 100}%`;
-        element.style.top = `${annotation.y * 100}%`;
-        element.style.setProperty('--annotation-color', annotation.color);
-        if (annotation.type === 'text' || annotation.fontSize)
-          element.style.fontSize = `${(annotation.fontSize || 14) * this.scale}px`;
-        element.onclick = (event) => {
-          if (event.detail === 0) this.editAnnotation(annotation).catch(this.callbacks.error);
-        };
-        layer.append(element);
+        this.textAnnotations.render(annotation, layer);
+        if (annotation.type === 'note')
+          for (const rect of annotation.rects || []) {
+            const anchor = document.createElement('span');
+            anchor.className = 'mark note-anchor';
+            anchor.dataset.noteId = annotation.id;
+            Object.assign(anchor.style, {
+              left: `${rect.x * 100}%`,
+              top: `${rect.y * 100}%`,
+              width: `${rect.w * 100}%`,
+              height: `${rect.h * 100}%`,
+            });
+            anchor.style.setProperty('--mark-color', annotation.color);
+            layer.append(anchor);
+          }
       }
     }
   }
@@ -876,6 +892,7 @@ export class PdfViewer {
       };
     };
     canvas.onpointerdown = async (event) => {
+      if (this.textAnnotations.finishedPointer === event) return;
       const start = point(event);
       const tool = this.tool;
       const documentId = this.doc.id;
@@ -931,13 +948,8 @@ export class PdfViewer {
       } else if (tool === 'text') {
         const fontSize = this.drawingOptions.textSize,
           color = this.color;
-        try {
-          const text = await this.callbacks.inputText(tool);
-          if (text && this.doc.id === documentId)
-            await this.addAnnotation({ type: tool, color, page, ...start, text, fontSize });
-        } catch (error) {
-          this.callbacks.error(error);
-        }
+        event.preventDefault();
+        this.textAnnotations.begin([{ type: tool, color, page, ...start, fontSize }]);
       }
     };
     canvas.onpointermove = (event) => {
