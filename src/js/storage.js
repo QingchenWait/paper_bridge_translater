@@ -1,5 +1,5 @@
 import { openDB } from 'idb';
-import { uid } from './utils.js';
+import { uid, md5Blob } from './utils.js';
 import { mergeBasicTranslation } from './basic-translation.js';
 export const STORES = [
   'documents',
@@ -70,6 +70,7 @@ export async function patch(store, id, values) {
   return row;
 }
 export async function addDocument(blob, name, pages, rootId = null, folderId = null, sourceId = null) {
+  const initialMd5 = await md5Blob(blob);
   const id = uid();
   const now = Date.now();
   const row = {
@@ -84,6 +85,7 @@ export async function addDocument(blob, name, pages, rootId = null, folderId = n
     zoom: 'fit',
     archived: false,
     folderId,
+    initialMd5,
   };
   const tx = (await database()).transaction(['documents', 'files', 'folders'], 'readwrite');
   if (sourceId) {
@@ -106,6 +108,33 @@ export async function addDocument(blob, name, pages, rootId = null, folderId = n
   await tx.objectStore('files').put({ id, blob, updatedAt: now });
   await tx.done;
   return row;
+}
+export async function findDocumentsByMd5(digest) {
+  const db = await database();
+  // Legacy documents retain their original blobs. Add only the missing cache field;
+  // do not change edit timestamps, other metadata, or recreate removed records.
+  for (const document of await db.getAll('documents')) {
+    if (typeof document.initialMd5 === 'string' && /^[a-f\d]{32}$/i.test(document.initialMd5)) continue;
+    const source = await db.get('files', document.id);
+    if (!source?.blob) continue;
+    const initialMd5 = await md5Blob(source.blob);
+    const tx = db.transaction(['documents', 'files', 'deletions'], 'readwrite');
+    const current = await tx.objectStore('documents').get(document.id),
+      file = await tx.objectStore('files').get(document.id),
+      deleted = await tx.objectStore('deletions').get(`documents-${document.id}`);
+    if (
+      current &&
+      file &&
+      !deleted &&
+      file.updatedAt === source.updatedAt &&
+      file.blob.size === source.blob.size
+    )
+      await tx.objectStore('documents').put({ ...current, initialMd5 });
+    await tx.done;
+  }
+  return (await db.getAll('documents')).filter(
+    (row) => String(row.initialMd5 || '').toLowerCase() === digest.toLowerCase(),
+  );
 }
 export async function snapshot() {
   const tx = (await database()).transaction(STORES, 'readonly');

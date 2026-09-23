@@ -68,7 +68,16 @@ export class Assistant {
     this.root.innerHTML = `<div class="selection-content"><section class="translation-section"><header><h3>原文 <span class="section-tag">${isSingleWord(entry.original) ? 'WORD' : 'SOURCE'}</span></h3><div>${iconButton('speak-source', 'volume-2', '朗读原文')}${iconButton('copy-source', 'copy', '复制原文')}</div></header><p class="source-text">${esc(entry.original)}</p></section><section class="translation-section"><header><h3>${entry.dictionary ? '词典释义' : '翻译结果'} <span class="section-tag">${esc(entry.engine || '')}</span></h3><div>${iconButton('speak-result', 'volume-2', '朗读译文')}${iconButton('copy-result', 'copy', '复制译文')}</div></header><div id="selection-result" class="markdown"></div>${entry.loading ? '<div class="inline-loading"><span class="spinner small"></span>正在理解这段文字…</div>' : ''}${entry.error ? `<div class="error-card">${icon('circle-alert')}<span>${esc(entry.error)}</span></div>${button('retry-selection', 'refresh-cw', '重试')}` : ''}</section><div class="translation-footnote">${icon('check')}自动整理 PDF 断词与换行</div></div>`;
     const target = this.root.querySelector('#selection-result');
     if (entry.dictionary) {
-      const { entries, chinese, forms, source, warning, chineseSource, credits = [] } = entry.dictionary;
+      const {
+        entries,
+        chinese,
+        forms,
+        source,
+        warning,
+        chineseSource,
+        credits = [],
+        definitionSources = [],
+      } = entry.dictionary;
       const first = entries[0];
       const credited = new Set(credits.map((credit) => credit.name));
       const chineseLabel =
@@ -79,6 +88,9 @@ export class Assistant {
         !credited.has(source) && esc(source || '在线词典'),
         !credited.has(source) && first.license?.name && esc(first.license.name),
         chinese && !credited.has(chineseSource) && esc(chineseLabel || ''),
+        entries.some((entry) => entry.meanings?.length) &&
+          definitionSources.length &&
+          `释义翻译：${definitionSources.map((id) => esc(BASIC_APIS.find((p) => p.id === id)?.name || { google: 'Google 翻译', mymemory: 'MyMemory' }[id] || id)).join(' / ')}`,
         ...credits.flatMap((credit) => [
           dictionaryLink(credit.name, credit.url),
           dictionaryLink('词条来源', credit.sourceUrl),
@@ -87,7 +99,7 @@ export class Assistant {
       ]
         .filter(Boolean)
         .join(' · ');
-      target.innerHTML = `<div class="dictionary-heading"><strong>${esc(first.word)}</strong><span>${esc(first.phonetic || first.phonetics?.find((p) => p.text)?.text || '')}</span>${iconButton('word-audio', 'volume-2', '播放词典发音')}</div>${chinese ? `<p class="chinese-meaning">${esc(chinese)}</p>` : '<p class="note">中文释义暂不可用，下面为词典原文释义。</p>'}${entries
+      target.innerHTML = `<div class="dictionary-heading"><strong>${esc(first.word)}</strong><span>${esc(first.phonetic || first.phonetics?.find((p) => p.text)?.text || '')}</span>${iconButton('word-audio', 'volume-2', '播放词典发音')}</div>${chinese ? `<p class="chinese-meaning">${esc(chinese)}</p>` : '<p class="note">暂无简短中文词义，下面为详细释义。</p>'}${entries
         .flatMap((e) => e.meanings)
         .map(
           (meaning) =>

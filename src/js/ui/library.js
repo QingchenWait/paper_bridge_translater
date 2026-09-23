@@ -35,7 +35,7 @@ export class LibraryView {
     this.direction = 'desc';
     this.query = '';
   }
-  async open() {
+  async open({ folderId } = {}) {
     if (!this.loaded) {
       const value = (await get('settings', 'library-view'))?.value || {};
       this.folderId = typeof value.folderId === 'string' ? value.folderId : null;
@@ -45,11 +45,16 @@ export class LibraryView {
       this.selection = new Set();
       this.loaded = true;
     }
+    if (folderId !== undefined) {
+      this.folderId = folderId;
+      this.query = '';
+    }
     this.state = await readLibrary();
     if (this.folderId && !this.state.folders.some((f) => f.id === this.folderId)) this.folderId = null;
     this.app.documents = this.state.documents;
     this.selection.clear();
     this.render();
+    if (folderId !== undefined) await this.persist();
   }
   persist() {
     return put('settings', {

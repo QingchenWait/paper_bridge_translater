@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 async function fixture(name = 'Research Paper.pdf') {
   const pdf = await PDFDocument.create();
+  pdf.setTitle(name);
   const font = await pdf.embedFont(StandardFonts.TimesRoman);
   const bold = await pdf.embedFont(StandardFonts.TimesRomanBold);
   for (let n = 1; n <= 3; n++) {
@@ -498,7 +499,7 @@ test('dictionary fallback displays definitions when the primary times out withou
     return route.abort();
   });
   await selectText(page, 'attention');
-  await expect(page.locator('.word-meaning')).toContainText('Mental focus');
+  await expect(page.locator('.word-meaning')).toContainText('注意力');
   await expect(page.locator('.chinese-meaning')).toHaveText('注意力');
   await expect(page.locator('.error-card')).toHaveCount(0);
   expect(llm).toBe(0);

@@ -1,6 +1,6 @@
 # 项目结构与开发逻辑
 
-适用版本：0.3.1。入口为 `index.html` → `src/js/main.js`，浏览器标题为“纸间 · 文献翻译”。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
+适用版本：0.3.2。入口为 `index.html` → `src/js/main.js`，浏览器标题为“纸间 · 文献翻译”。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
 
 ## 文件树
 
@@ -43,7 +43,7 @@ pdf_translater/
 │  │  ├─ utils.js                  转义、UUID、下载、哈希、格式化
 │  │  ├─ text.js                   PDF 排版清洗、单词判断、按字节切片
 │  │  ├─ translation.js            免费词典、词形补充、基础翻译入口
-│  │  ├─ dictionary-fallbacks.js   FreeDictionaryAPI / 3325 响应转为统一单词结构
+│  │  ├─ dictionary-fallbacks.js   有道/FreeDictionaryAPI/3325 适配、详细释义判定和中文转换
 │  │  ├─ basic-translation.js      非 LLM 服务配置、签名、JSONP、分段和响应解析
 │  │  ├─ llm.js                    Chat/Responses、文件输入、SSE、原生 PDF
 │  │  ├─ markdown.js               Markdown/KaTeX/高亮/安全 HTML
@@ -85,7 +85,7 @@ pdf_translater/
 ├─ tests/
 │  ├─ core.test.mjs                数据、清洗、SSE 和存档协议测试
 │  ├─ providers.test.mjs           模板、可信官网映射、原配置保留与原生桥接测试
-│  ├─ dictionary-fallbacks.test.mjs 中文语言/子词义筛选、音标词形与错误结构测试
+│  ├─ dictionary-fallbacks.test.mjs 词性/子词义、中文转换、客户端识别与错误结构测试
 │  ├─ basic-translation.test.mjs   三家签名、响应、分段/取消、凭据存档和并发保存
 │  ├─ settings-persistence.test.mjs 自动保存交错写入、完整设置备份、清空 API 防复活
 │  ├─ annotation-writes.test.mjs   原位写入顺序、事务回滚、删除保护和几何备份
@@ -97,14 +97,16 @@ pdf_translater/
 │  ├─ shapes.test.mjs              形状几何、删除线及字号规则测试
 │  ├─ search-geometry.test.mjs     搜索过滤、跨文本片段、移动边界与命中测试
 │  ├─ library.test.mjs             目录/删除边界、事务回滚、共享历史、ZIP 和冲突测试
+│  ├─ file-fingerprints.test.mjs   原始 MD5、分块/独立身份、旧记录补算/删除竞态与存档
 │  └─ e2e/
 │     ├─ app.spec.js               原有合成 PDF 的真实浏览器功能回归
 │     ├─ optimizations.spec.js     状态反馈、松手翻译、绘图尺寸和导航回归
 │     ├─ reader-refinements.spec.js 字形坐标、旋转/裁切、高 DPI、拖动/历史及搜索浮窗
 │     ├─ library.spec.js           文档库交互、共享历史、下载、切换锁和无损升级
+│     ├─ file-management.spec.js   重复导入确认、批量/跨页并发、外链副本和当前目录
 │     ├─ editing-settings.spec.js  编辑导出回读、选词/绘图手势、引导/API 设置回归
 │     ├─ basic-translation.spec.js 基础设置/教程/默认引擎、JSONP 和阅读区路由
-│     ├─ dictionary-fallbacks.spec.js 中文优先级、两级备选、来源字段、取消和晚到响应
+│     ├─ dictionary-fallbacks.spec.js 有道宿主、详细释义补齐、中文转换/回退/取消及来源
 │     ├─ settings-autosave.spec.js 自动保存、即时备份、动画速度、桌面/手机启动页
 │     ├─ inline-annotations.spec.js 原位输入/宽度/工具、空对象、原生导出及紧凑控件
 │     └─ v031.spec.js              打开菜单/链接/文档树、浮栏同步、原字体重复导出
@@ -132,7 +134,7 @@ pdf_translater/
 
 | 表 | 核心字段 | 用途 / 不变量 |
 | --- | --- | --- |
-| documents | id, rootId, folderId?, name, pages, size, page, zoom, createdAt, updatedAt, translationId? | folderId 为空代表根目录；rootId 是稳定逻辑组 ID，原文删除后仍保留该值以继续共享历史 |
+| documents | id, rootId, folderId?, name, pages, size, page, zoom, createdAt, updatedAt, translationId?, initialMd5? | folderId 为空代表根目录；rootId 是稳定逻辑组 ID；initialMd5 为原始 Blob 指纹，手动重复上传仍使用新 id/rootId |
 | files | id, blob, updatedAt | id 与 documents 一致；原始或生成 PDF 不可变，避免编辑破坏源文件 |
 | annotations | id, documentId, page, type, color, rects/points/x/y/text, selectedText?, fontSize?, width?, boxWidth?, boxHeight?, border?, strokeWidth?, shape?/start?/end?, deleted, recovered? | 下划线/删除线/高亮/新批注保存选区 rects；笔迹 points 与形状 start/end 使用归一化坐标；尺寸以 pt 保存；局部移除裁剪 rects，清空使用 tombstone |
 | conversations | id, rootId, title, createdAt, updatedAt | 逻辑文档下多条独立会话；原文和译文共享 |
@@ -154,7 +156,8 @@ pdf_translater/
 - `all(store)`、`get(store,id)`：读取记录。
 - `put(store,row)`：克隆、更新时间并等待事务；检查删除标记和批注/译文/会话/消息所有者仍存在，防止已删除内容被异步任务回填。
 - `patch(store,id,values)`：在同一事务里读取再合并，避免覆盖无关字段。
-- `addDocument(blob,name,pages,rootId?,folderId?,sourceId?)`：metadata/Blob 同事务写入；目标目录必须存在，生成译文时从 sourceId 的最新记录继承逻辑组与原文目录，来源已删除则拒绝创建。
+- `addDocument(blob,name,pages,rootId?,folderId?,sourceId?)`：事务前计算原始 Blob 的 initialMd5，metadata/Blob 同事务写入；目标目录必须存在，生成译文时从 sourceId 的最新记录继承逻辑组与原文目录，来源已删除则拒绝创建。普通上传不按 MD5 复用任何 ID。
+- `findDocumentsByMd5(digest)`：全库匹配初始 MD5；缺少/无效缓存的旧记录逐份读取 files.blob 计算，写前在 documents/files/deletions 事务复查存活与源文件时间/大小，仅补充 initialMd5，保留最新其他字段及 updatedAt。匹配前重新读取最新文档列表，不返回已删除记录。
 - `snapshot()`：单个只读事务得到所有表的一致快照。
 - `mergeSnapshot(data,{restoreSettings,restoreDeleted})`：跨表原子合并，保留冲突内容，合并目录/精确删除标记；被动同步不复活已删除对象。主动本地导入可移除对应标记并用晚于删除的时间恢复记录。
 - `contextDocument(rootId,preferredId)`：优先原文，原文已删则选择当前或其他存活组成员，用于继续 AI 上下文。
@@ -217,17 +220,24 @@ pdf_translater/
 - `splitForTranslation(text,byteLimit=450)`：按 Unicode 码点切片，以 UTF-8 字节限制请求，不破坏代理对。
 - `CLEANING_INSTRUCTIONS`：统一 LLM 排版修复和文档内指令隔离提示。
 - `onlineTranslate(text,source,target,signal,basic,style)`：按 basic.defaultProvider 委托 basicTranslate，缺省 MyMemory，保留超时/取消；lookupWord 的中文补充使用同一基础配置及通用风格。
-- `lookupWord(word,signal,onUpdate,basic)`：Free Dictionary/Wiktionary REST 英文定义并行竞速，中文与词形独立并行；增量回调显示先到结果，单源超时不阻断其他来源。中文先用既有基础服务，无汉字或请求失败时按 FreeDictionaryAPI.com→3325 顺序查询；成功后停止后续查询，取消时不继续下一家、不发布旧更新。仅中文可用时说明缺少详细词典，不查询 LLM。
-- `updateDetails`（lookupWord 内部）：主要定义优先，其次采用备选定义；缺少的音标和额外词形从备选补齐，较晚主结果不清除已获得的补充。返回结构仍为 word/entries/chinese/forms/source/warning，chineseSource 为真实中文来源，新增临时 credits 保存备选署名/原词条/许可证；划词状态不持久化。
-- `dictionaryJson(url,signal)` / `plainText(html)`（内部）：6.5 秒独立词典超时，提取词条 HTML 的纯文字。
+- `lookupWord(word,signal,onUpdate,basic)`：客户端先尝试有道，网页跳过。普通流程仍并行查询 Free Dictionary/Wiktionary，按完成顺序验证并转换详细释义；中文简短词义和词形独立获取。无中文或无有效详细释义时顺序查询 FreeDictionaryAPI.com→3325；仅简短中文成功不提前结束，候选全部失败才报告。取消不继续下一候选、不发布旧更新，不调用 LLM。
+- `updateDetails` / `addSupplement`（内部）：已转换的主要定义优先，其次采用可用备选；英文转换前只发布简短中文/音标/词形，转换后替换对应候选。返回 word/entries/chinese/forms/source/warning/chineseSource/credits，并以 definitionSources 记录详细释义的实际翻译服务；全部仅存在当前选词内存。
+- `translateDetail` / `prepareDetails`（内部）：当前基础 API 优先，后续按 basicOptions 尝试免 Key/完整凭据服务，网页跳过明确不支持的火山方式。共享取消信号、失败服务集合、按原解释文本复用 Promise，逐条保留映射；中文转换失败则清除该候选未展示的正文解释并继续搜索，记录实际失败原因。不会改默认配置。
+- `dictionaryJson(url,signal,request=fetch)` / `plainText(html)`（内部）：6.5 秒独立词典超时，支持有道宿主传输函数，提取词条 HTML 的纯文字。
 - `LANGUAGES`：中简/中繁/英/日/韩/法/德/西的展示和 API 代码映射。
 
 ### dictionary-fallbacks.js
 
+- `hasDictionaryDetails(result)`：至少一个 meaning 同时具有非空 partOfSpeech 和 definition；空壳和简短词义均不满足。
+- `nativeDictionaryAvailable(host=globalThis)`：识别 Tauri 标识或显式宿主 transport，不用 User-Agent 猜测；普通网页为 false。
+- `youdaoDictionaryResult(json,word)`：校验 result.code=200 和匹配词条，正则识别 n./v./vt./vi./adj. 等词性边界，保留词义内分号，输出统一 entries/chinese/forms/credit；不扩写接口省略的内容。
+- `needsChineseTranslation(value)` / `chineseDictionaryEntries(entries,translate)`：识别英文及以英文为主的混合解释，在副本中翻译非中文 definition，常见/组合词性用 partsOfSpeech 映射，未知英文标签委托翻译；保留原文例句、音标、近义词与词形，不影响输入对象。
 - `hasChinese(value)`：字符串含 Unicode Han 字符才视为有中文，空值、英文原词或拼音会触发备选。
 - `freeDictionaryResult(json,word)`：只取 language.code=en 词条，递归展开 senses/subsenses；将 zh/zho/cmn 及子标签的 translations.word 去重为中文释义。pronunciations→phonetics、partOfSpeech/senses→meanings、examples→example、条目/词义 synonyms 合并、forms.word/tags→词形，保留 source.url/license 和 FreeDictionaryAPI.com 署名。
 - `dictionary3325Result(json,word)`：校验 code=200、data 存在；british/american→phonetics，cx→partOfSpeech，jbjs→definition/chinese，url→来源；缺省空 synonyms/forms/audio，不额外请求无关接口。
 - `text/list/unique/sensesOf`（内部）：纯数据类型检查、去重与子词义展开，无 DOM、持久化或网络副作用。
+
+宿主接口 `globalThis.__PAPER_BRIDGE_DICTIONARY_FETCH__(url,{signal}) → Promise<Response>`：由后续客户端在应用启动前注入，只接收有道查询 URL，返回 Fetch 兼容响应并遵守取消/超时。未注入时 Tauri 客户端尝试 fetch，CORS 未解决则回退；普通网页无标识/钩子时完全跳过有道。本仓库不提供该代理服务。
 
 ### llm.js
 
@@ -352,10 +362,13 @@ pdf_translater/
 
 - `chooseSaveTarget(filename,{directory})`：由点击处理同步进入原生选址，返回文件/目录句柄或取消 null；API 缺失/NotSupportedError 返回 defaultDownload 标记，不额外提示。SecurityError 不伪装成不支持，不静默重复下载。
 - `saveFile(blob,filename,{target})`：校验非空 Blob，写入已获取的句柄，或按 defaultDownload 下载到默认位置；没有预选目标时可获取一次。取消不下载，写失败 abort 并抛错，不重新选择或下载。
+- `md5Blob(blob)`：按需加载现有 noble MD5，以 2 MiB 切片更新哈希，输出小写 32 位十六进制；WeakMap 缓存同一 Blob 的计算 Promise，失败移除缓存。不修改文件、不新增依赖。
+
+存档文档可携带 initialMd5，readArchive 校验其可选的 32 位十六进制格式；旧存档缺少字段仍可恢复，在下次重复检测时补算。备份/云快照沿用文档元数据，不改变原有 PDF SHA-256 完整性校验。
 
 ### ui/library.js 的 LibraryView
 
-- `constructor/open/persist`：初始化目录、选择集合和视图/排序偏好，读取一致库状态，修复已不存在的当前目录为根目录；偏好保存在 settings/library-view。
+- `constructor/open({folderId}?)/persist`：初始化目录、选择集合和视图/排序偏好，读取一致库状态，修复不存在的目录为根目录。显式 folderId（可为 null）在载入偏好后覆盖目录并清空搜索；没有参数时保留管理页当前目录。偏好仍保存在 settings/library-view。
 - `breadcrumbs`：以父 ID 链构建路径，防止循环。
 - `render/renderObjects/updateSelection`：页面骨架、文件夹优先的卡片/列表、左上选择框及批量按钮；切换目录/搜索清空选择，排序/视图切换保留选中 ID。
 - `action`：分发新建、视图、排序、移动、下载和删除。
@@ -412,7 +425,8 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 | --- | --- |
 | constructor / init | 初始化状态、数据库、界面、持久存储请求、恢复标签/对话和首次引导 |
 | mount / bind / action | 生成静态界面骨架、委托动作、导入拖放、快捷键、尺寸变化 |
-| importFiles(files,{folderId}?) | 逐份校验加载 PDF，事务保存后打开；默认按当前文档库目录导入，外部链接显式 folderId:null 入根目录；失败不产生半成品 |
+| importFiles(files,{folderId}?) | 捕获文件列表/目标目录，单页面队列串行处理；可用时以 Web Locks 同源锁协调多标签页，再委托 performImportFiles |
+| performImportFiles / confirmDuplicate | 计算原始 MD5、全库匹配；重复时显示是/否，否及关闭跳过当前文件，是追加“副本”并创建独立 id/rootId；校验并事务入库后打开，批量目标目录保持最初选择 |
 | importGenerated | 验证生成的 PDF，保存为共享原文 rootId 的新文档 |
 | openDocument / performOpenDocument / closeDocument | 进行中 Promise 锁定第一次切换，后续点击不打断；加载后复查存在性，关闭只移除标签 |
 | saveWorkspace | 保存标签、活动 PDF 和每个文档活动对话 |
@@ -422,7 +436,7 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 | setTool / colorPicker / saveToolOptions | 选区动作或持续工具分发，颜色/形状与 pt 滑块浮层，保存后续工具偏好 |
 | changeZoom / setPage | 比例、跳页和延迟保存滚动位置 |
 | showReader / showSecondary | 工作区与管理页之间切换 |
-| showLibrary / showRecords | 委托 LibraryView 展示文件库；单独展示全文历史 |
+| showLibrary / showRecords | 从阅读区进文件库时读取当前文档的最新 folderId，无活动文档传 null；管理页刷新保留目录。全文历史独立展示 |
 | documentText | 顺序提取全文，缓存最近一份文本并释放临时 PDF Worker |
 | downloadCurrent | 点击后先选址，再读 Blob/懒加载导出模块；保存互斥，每次操作只保存一次 |
 | reload / refreshAssistant | 导入、设置、云同步后的界面刷新 |
@@ -468,6 +482,7 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 | #split-handle | 拖动或方向键调整左右宽度 | desktop.js |
 | #document-tabs / .document-tab | 已打开 PDF 的单行卡片、关闭和激活；页码保留在工具栏 | App.renderTabs |
 | #pdf-input | 隐藏本地多文件选择器 | App.importFiles |
+| [data-action=duplicate-yes] / [data-action=duplicate-no] | 重复 MD5 确认；是创建独立副本，否/关闭取消当前文件 | App.confirmDuplicate |
 | [data-action=open-pdf] / .open-pdf-menu / [data-open-pdf] | 阅读栏和手机顶部打开菜单：本地、文档库、链接 | OpenPdfMenu |
 | .open-document-tree / .tree-document | 可折叠文档树、点击已有 PDF 打开 | OpenPdfMenu.openLibrary |
 | #external-pdf-form / .pdf-filename-field / .external-pdf-status | 链接、可选重命名及固定后缀、加载/错误反馈 | OpenPdfMenu.openLink / parsePdfLink |
@@ -486,7 +501,7 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 | [data-assistant-tab] | 划词 / 全文 / AI 问答切换 | Assistant |
 | #translation-settings | 翻译引擎和风格设置浮层 | Assistant.settings |
 | #selection-result | 在线词典或句子结果，不持久化 | Assistant.renderSelection |
-| .dictionary-credit | 主要词典与实际中文来源、备选署名/词条/许可证链接；dictionaryLink 仅允许无凭据 HTTPS | Assistant.renderSelection / dictionaryLink |
+| .dictionary-credit | 主要词典、中文词义与详细解释翻译来源、备选署名/词条/许可证；dictionaryLink 仅允许无凭据 HTTPS | Assistant.renderSelection / dictionaryLink |
 | #full-stage / #full-result | 全文状态和完整 Markdown 结果 | Assistant.startFull |
 | #full-controls / .full-summary / .full-toggle | 参数折叠动画、吸顶进度栏、停止与展开/收起按钮 | Assistant.setFullCollapsed |
 | [data-select=translation-history] | 当前 PDF 的旧译文选择 | Assistant.renderFull |
@@ -506,6 +521,7 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 | .note-anchor / .is-emphasized | 批注同色源文下划线与悬停强调 | PdfViewer.drawAnnotations / TextAnnotations.emphasize |
 | #settings-content / #provider-form | 多 API 配置及能力设置 | settings-panel |
 | [data-action=settings-basic] / [data-select=basic-default] | 基础翻译子页面与默认模型 | BasicSettings |
+| .youdao-dictionary-note | 内置有道词典的网页限制及客户端 CORS 代理说明 | BasicSettings.render |
 | .basic-summary / #basic-body-{id} / .basic-status | 单行折叠标题、展开配置及状态绿点 | BasicSettings.render/status |
 | [data-basic-form] / [data-action=test-basic] / [data-action=show-basic-secret] | 账号/密钥、连接测试、保存及可见性 | BasicSettings.test/save |
 | #cloud-form | WebDAV 账号、测试、同步和开关 | settings-panel / archive |

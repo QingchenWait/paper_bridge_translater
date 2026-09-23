@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { hasChinese, freeDictionaryResult, dictionary3325Result } from '../src/js/dictionary-fallbacks.js';
+import {
+  hasChinese,
+  freeDictionaryResult,
+  dictionary3325Result,
+  youdaoDictionaryResult,
+  hasDictionaryDetails,
+  nativeDictionaryAvailable,
+  chineseDictionaryEntries,
+  needsChineseTranslation,
+} from '../src/js/dictionary-fallbacks.js';
 
 test('FreeDictionaryAPI maps recursive senses and Chinese translations without mixing other languages', () => {
   const result = freeDictionaryResult(
@@ -88,4 +97,82 @@ test('Chinese availability excludes empty, unchanged English and romanized resul
   for (const text of [undefined, null, '', 'attention', 'zhùyì', 'Quota exceeded'])
     assert.equal(hasChinese(text), false);
   for (const text of ['注意力', '專注', 'n. 关注；关心']) assert.equal(hasChinese(text), true);
+});
+
+test('Youdao separates semicolon-delimited parts of speech without splitting a sense at every semicolon', () => {
+  const result = youdaoDictionaryResult(
+    {
+      result: { code: 200 },
+      data: {
+        entries: [
+          {
+            entry: 'love',
+            explain: 'n. 爱；爱情；喜好； v. 爱；热爱； vt. 喜欢；热衷于',
+          },
+        ],
+      },
+    },
+    'LOVE',
+  );
+  assert.equal(result.entries[0].meanings.length, 3);
+  assert.equal(result.entries[0].meanings[0].definitions[0].definition, '爱；爱情；喜好');
+  assert.equal(result.entries[0].meanings[1].partOfSpeech, 'v.');
+  assert.equal(result.entries[0].meanings[2].definitions[0].definition, '喜欢；热衷于');
+  assert.equal(hasDictionaryDetails(result), true);
+  assert.throws(
+    () =>
+      youdaoDictionaryResult(
+        { result: { code: 200 }, data: { entries: [{ entry: 'lovely', explain: 'adj. 可爱' }] } },
+        'love',
+      ),
+    /匹配/,
+  );
+  assert.throws(() => youdaoDictionaryResult({ result: { code: 403 } }, 'love'), /暂无/);
+});
+test('a Chinese gloss or empty meaning shell never satisfies the detailed-definition condition', () => {
+  for (const meanings of [
+    [],
+    [{ partOfSpeech: 'noun', definitions: [] }],
+    [{ partOfSpeech: 'noun', definitions: [{ definition: ' ' }] }],
+    [{ definitions: [{ definition: '中文' }] }],
+  ])
+    assert.equal(hasDictionaryDetails({ chinese: '中文', entries: [{ meanings }] }), false);
+  assert.equal(
+    hasDictionaryDetails({
+      entries: [{ meanings: [{ partOfSpeech: 'noun', definitions: [{ definition: 'A meaning.' }] }] }],
+    }),
+    true,
+  );
+});
+test('only a native shell or explicitly installed host transport enables Youdao', () => {
+  assert.equal(nativeDictionaryAvailable({}), false);
+  assert.equal(nativeDictionaryAvailable({ navigator: { userAgent: 'Tauri' } }), false);
+  assert.equal(nativeDictionaryAvailable({ __TAURI_INTERNALS__: {} }), true);
+  assert.equal(nativeDictionaryAvailable({ __PAPER_BRIDGE_DICTIONARY_FETCH__: () => {} }), true);
+});
+test('Chinese conversion keeps sense boundaries and original examples while localizing POS and definitions', async () => {
+  const original = [
+    {
+      word: 'love',
+      meanings: [
+        {
+          partOfSpeech: 'n. & v.',
+          definitions: [
+            { definition: 'To care for.', example: 'I love books.' },
+            { definition: '已经是中文' },
+          ],
+        },
+      ],
+    },
+  ];
+  const converted = await chineseDictionaryEntries(original, async (value) => {
+    assert.equal(value, 'To care for.');
+    return '关心、爱护。';
+  });
+  assert.equal(converted[0].meanings[0].partOfSpeech, '名词 / 动词');
+  assert.equal(converted[0].meanings[0].definitions[0].definition, '关心、爱护。');
+  assert.equal(converted[0].meanings[0].definitions[0].example, 'I love books.');
+  assert.equal(original[0].meanings[0].definitions[0].definition, 'To care for.');
+  assert.equal(needsChineseTranslation('An English definition containing 注意 as a quoted term.'), true);
+  assert.equal(needsChineseTranslation('一种 Transformer 模型'), false);
 });

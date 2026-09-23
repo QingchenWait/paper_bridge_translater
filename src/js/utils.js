@@ -60,6 +60,22 @@ export async function sha256(bytes) {
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
+const blobFingerprints = new WeakMap();
+export function md5Blob(blob) {
+  if (!blobFingerprints.has(blob)) {
+    const pending = (async () => {
+      const { md5 } = await import('@noble/hashes/legacy.js');
+      const hash = md5.create(),
+        chunkSize = 2 * 1024 * 1024;
+      for (let offset = 0; offset < blob.size; offset += chunkSize)
+        hash.update(new Uint8Array(await blob.slice(offset, offset + chunkSize).arrayBuffer()));
+      return [...hash.digest()].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    })();
+    blobFingerprints.set(blob, pending);
+    pending.catch(() => blobFingerprints.delete(blob));
+  }
+  return blobFingerprints.get(blob);
+}
 export function bytesToBase64(bytes) {
   let text = '';
   for (let i = 0; i < bytes.length; i += 8192) text += String.fromCharCode(...bytes.subarray(i, i + 8192));

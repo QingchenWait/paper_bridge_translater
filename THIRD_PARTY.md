@@ -16,7 +16,7 @@
 | [Noto CJK](https://github.com/notofonts/noto-cjk) | `public/fonts/NotoSansSC-Regular.otf`，按需加载的批注中文字体 | SIL OFL 1.1；见 `public/fonts/LICENSE` |
 | markdown-it、markdown-it-texmath、KaTeX、highlight.js | Markdown、数学与代码渲染 | 各包许可证见 node_modules；构建固定依赖版本 |
 | DOMPurify | HTML 净化 | Apache-2.0 OR MPL-2.0 |
-| [@noble/hashes](https://github.com/paulmillr/noble-hashes) 2.4.0 | 百度官方接口要求的 MD5 签名，按需加载 legacy.js；SHA/HMAC 使用浏览器 Web Crypto | MIT；分发包保留 NOBLE-HASHES.txt |
+| [@noble/hashes](https://github.com/paulmillr/noble-hashes) 2.4.0 | 百度 MD5 签名及原始 PDF 重复检测指纹，按需加载 legacy.js，PDF 使用增量分块更新；SHA/HMAC 使用浏览器 Web Crypto | MIT；分发包保留 NOBLE-HASHES.txt |
 | idb、fflate、html2canvas、fontkit | 存储、存档、视觉 PDF、字体子集 | 各包原许可证保留于依赖目录 |
 
 素材下载脚本为 `tools/download-assets.ps1`。源图标并未重绘；CSS 只调整显示尺寸、颜色滤镜和透明度。UI 参考图和规则来自用户提供的 `src/ui_rules`。
@@ -32,6 +32,7 @@
 
 ## API 官方参考
 
+- [有道 suggest 接口（用户指定）](https://dict.youdao.com/suggest?q=love&num=1&doctype=json)：客户端优先词典，result.code / data.entries[].entry/explain；按返回词性标记拆分，不扩写省略数据。实测无 Origin 可返回 JSON，带网页 Origin 被拒绝；仅客户端尝试，预留宿主 CORS 请求钩子，代理后续打包时接入。显示有道及词条来源，不声明其数据采用开放许可证。
 - [Free Dictionary API](https://dictionaryapi.dev/)：英文词典。词条显示接口返回的许可证信息。
 - [FreeDictionaryAPI.com](https://freedictionaryapi.com/) / [官方 OpenAPI](https://freedictionaryapi.com/api/v1/openapi.json)：中文释义第一备选，与 dictionaryapi.dev 是不同服务。GET entries/en/{word}?translations=true，解析词义/子词义的中文翻译及音标、词性、例句、近义词和词形；Wiktionary 数据按返回的 CC BY-SA 4.0 署名，在结果中展示服务名、原始词条和许可证链接。官方当前标注每 IP 每小时 1000 次，无 Key、支持 CORS。
 - [3325 词典官方文档](https://3325.cn/api-docs)：中文释义第二备选。GET /api/word/{word}，code/data 外层、british/american/cx/jbjs/url 字段；当前每 IP 每分钟 60 次，429 表示限流，CORS 允许直接浏览器调用。保留词条来源链接，不擅自宣称其数据采用开放许可证。

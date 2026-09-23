@@ -1,7 +1,7 @@
 import '../styles/base.css';
 import '../styles/desktop.css';
 import '../styles/mobile.css';
-import { all, get, put, patch, addDocument, requestPersistence } from './storage.js';
+import { all, get, put, patch, addDocument, findDocumentsByMd5, requestPersistence } from './storage.js';
 import { getSettings } from './settings.js';
 import { scheduleSync, syncWebDav } from './archive.js';
 import { loadPdf, extractPdfText, PdfViewer } from './pdf.js';
@@ -10,7 +10,7 @@ import { SHAPES } from './shapes.js';
 import { PdfNavigation } from './ui/pdf-navigation.js';
 import { LibraryView } from './ui/library.js';
 import { OpenPdfMenu } from './ui/open-pdf.js';
-import { esc, sizeLabel, dateLabel, chooseSaveTarget, saveFile, errorMessage } from './utils.js';
+import { esc, sizeLabel, dateLabel, chooseSaveTarget, saveFile, errorMessage, md5Blob } from './utils.js';
 import {
   icon,
   iconButton,
@@ -141,7 +141,7 @@ class App {
   }
   mount() {
     document.getElementById('app').innerHTML =
-      `<aside class="sidebar"><a class="brand" href="#" aria-label="纸间主页"><span class="brand-symbol">${icon('book-open')}</span><span class="brand-name">纸间<span>PAPER BRIDGE</span></span></a><nav class="main-nav">${button('reader', 'book-open', 'PDF 翻译', 'nav-item active')}${button('library', 'folder-open', '文档管理', 'nav-item')}${button('records', 'history', '翻译记录', 'nav-item')}</nav><div class="sidebar-bottom">${button('cloud', 'cloud', '云同步', 'nav-item')}${button('settings', 'settings-2', '设置', 'nav-item')}${button('help', 'circle-help', '使用帮助', 'nav-item')}<span class="version">v0.3.1</span></div></aside><main class="main-shell"><header class="mobile-header"><span>${icon('book-open')}纸间 · 文献翻译</span>${iconButton('open-pdf', 'plus', '打开 PDF')}</header><div class="workspace" id="workspace"><aside id="pdf-navigation" class="pdf-navigation" aria-label="PDF 导航" hidden></aside><section class="reader-panel" aria-label="PDF 阅读区"><div class="document-bar"><div id="document-tabs" class="document-tabs"></div><button type="button" class="button open-pdf" data-action="open-pdf" aria-label="打开 PDF" aria-haspopup="menu" aria-expanded="false">${icon('plus')}<span>打开 PDF</span></button></div><div class="toolbar" id="pdf-toolbar"></div><div class="reader-body"><div class="pdf-scroll" id="pdf-scroll"></div><div class="reader-empty" id="reader-empty"><div class="empty-book"><img src="${illustration('open-book')}" alt="打开的书"></div><div class="empty-caption">YOUR NEXT GREAT IDEA STARTS HERE</div><h1>纸间 · AI 文献翻译</h1><p>青尘工作室 <b>@CyanDust_青尘</b> 出品</p>${button('upload', 'upload', '打开本地 PDF', 'primary large')}<span class="upload-hint">支持多份文档 · 自动保存阅读进度</span><div class="empty-features"><span>${icon('highlighter')}随手批注</span><span>${icon('languages')}划词即译</span><span>${icon('sparkles')}AI 问答</span></div></div></div><footer class="reader-status"><span id="document-status">一张书桌，无限可能</span><span id="save-status">${icon('shield-check')}本地自动保存</span></footer></section><div class="split-handle" id="split-handle" role="separator" aria-label="调整左右栏宽度" aria-orientation="vertical" tabindex="0"></div><section class="assistant-panel" aria-label="翻译与 AI 助手"><header class="assistant-header"><div class="segmented" role="tablist"><button data-assistant-tab="selection" class="active" role="tab" aria-selected="true">划词翻译</button><button data-assistant-tab="full" role="tab" aria-selected="false">全文翻译</button><button data-assistant-tab="chat" role="tab" aria-selected="false">AI 问答</button></div><button id="translation-settings" class="translation-settings" title="翻译设置" aria-label="翻译设置">${icon('settings-2')}<span>翻译设置</span>${icon('chevron-down')}</button></header><div id="assistant-content" class="assistant-content"></div></section></div><section id="library-view" class="library-view" hidden></section><nav class="mobile-nav"><button class="active" data-mobile-pane="reader">${icon('book-open')}阅读</button><button data-mobile-pane="assistant">${icon('languages')}翻译 / AI</button>${button('library', 'folder-open', '文档')}${button('settings', 'settings-2', '设置')}</nav></main><div id="color-popover" class="color-popover" hidden></div>`;
+      `<aside class="sidebar"><a class="brand" href="#" aria-label="纸间主页"><span class="brand-symbol">${icon('book-open')}</span><span class="brand-name">纸间<span>PAPER BRIDGE</span></span></a><nav class="main-nav">${button('reader', 'book-open', 'PDF 翻译', 'nav-item active')}${button('library', 'folder-open', '文档管理', 'nav-item')}${button('records', 'history', '翻译记录', 'nav-item')}</nav><div class="sidebar-bottom">${button('cloud', 'cloud', '云同步', 'nav-item')}${button('settings', 'settings-2', '设置', 'nav-item')}${button('help', 'circle-help', '使用帮助', 'nav-item')}<span class="version">v0.3.2</span></div></aside><main class="main-shell"><header class="mobile-header"><span>${icon('book-open')}纸间 · 文献翻译</span>${iconButton('open-pdf', 'plus', '打开 PDF')}</header><div class="workspace" id="workspace"><aside id="pdf-navigation" class="pdf-navigation" aria-label="PDF 导航" hidden></aside><section class="reader-panel" aria-label="PDF 阅读区"><div class="document-bar"><div id="document-tabs" class="document-tabs"></div><button type="button" class="button open-pdf" data-action="open-pdf" aria-label="打开 PDF" aria-haspopup="menu" aria-expanded="false">${icon('plus')}<span>打开 PDF</span></button></div><div class="toolbar" id="pdf-toolbar"></div><div class="reader-body"><div class="pdf-scroll" id="pdf-scroll"></div><div class="reader-empty" id="reader-empty"><div class="empty-book"><img src="${illustration('open-book')}" alt="打开的书"></div><div class="empty-caption">YOUR NEXT GREAT IDEA STARTS HERE</div><h1>纸间 · AI 文献翻译</h1><p>青尘工作室 <b>@CyanDust_青尘</b> 出品</p>${button('upload', 'upload', '打开本地 PDF', 'primary large')}<span class="upload-hint">支持多份文档 · 自动保存阅读进度</span><div class="empty-features"><span>${icon('highlighter')}随手批注</span><span>${icon('languages')}划词即译</span><span>${icon('sparkles')}AI 问答</span></div></div></div><footer class="reader-status"><span id="document-status">一张书桌，无限可能</span><span id="save-status">${icon('shield-check')}本地自动保存</span></footer></section><div class="split-handle" id="split-handle" role="separator" aria-label="调整左右栏宽度" aria-orientation="vertical" tabindex="0"></div><section class="assistant-panel" aria-label="翻译与 AI 助手"><header class="assistant-header"><div class="segmented" role="tablist"><button data-assistant-tab="selection" class="active" role="tab" aria-selected="true">划词翻译</button><button data-assistant-tab="full" role="tab" aria-selected="false">全文翻译</button><button data-assistant-tab="chat" role="tab" aria-selected="false">AI 问答</button></div><button id="translation-settings" class="translation-settings" title="翻译设置" aria-label="翻译设置">${icon('settings-2')}<span>翻译设置</span>${icon('chevron-down')}</button></header><div id="assistant-content" class="assistant-content"></div></section></div><section id="library-view" class="library-view" hidden></section><nav class="mobile-nav"><button class="active" data-mobile-pane="reader">${icon('book-open')}阅读</button><button data-mobile-pane="assistant">${icon('languages')}翻译 / AI</button>${button('library', 'folder-open', '文档')}${button('settings', 'settings-2', '设置')}</nav></main><div id="color-popover" class="color-popover" hidden></div>`;
   }
   bind() {
     window.addEventListener(
@@ -274,11 +274,37 @@ class App {
     } else if (action.startsWith('tool-')) await this.setTool(action.slice(5));
     else if (action.startsWith('color-')) this.colorPicker(action.slice(6), target);
   }
-  async importFiles(
+  importFiles(
     files,
     { folderId = document.documentElement.dataset.view === 'library' ? this.library.folderId : null } = {},
   ) {
-    for (const file of [...files]) {
+    const batch = [...files];
+    const run = () => this.performImportFiles(batch, folderId);
+    const pending = (this.importQueue || Promise.resolve())
+      .catch(() => {})
+      .then(() =>
+        navigator.locks?.request ? navigator.locks.request('paper-bridge-pdf-import', run) : run(),
+      );
+    this.importQueue = pending;
+    return pending;
+  }
+  async confirmDuplicate(name) {
+    return new Promise((resolve) => {
+      let accepted = false;
+      const dialog = modal(
+        '重复的 PDF 文件',
+        `<p>该文件已经存在于文件库中，是否继续上传？</p><p class="note">${esc(name)}</p><div class="modal-actions">${button('duplicate-no', 'x', '否')}${button('duplicate-yes', 'check', '是', 'primary')}</div>`,
+        { onClose: () => resolve(accepted) },
+      );
+      dialog.element.querySelector('[data-action="duplicate-no"]').onclick = dialog.close;
+      dialog.element.querySelector('[data-action="duplicate-yes"]').onclick = () => {
+        accepted = true;
+        dialog.close();
+      };
+    });
+  }
+  async performImportFiles(files, folderId) {
+    for (const file of files) {
       if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
         toast(`${file.name} 不是 PDF 文件`, 'error');
         continue;
@@ -286,8 +312,16 @@ class App {
       let pdf;
       try {
         toast(`正在导入 ${file.name}`);
+        const digest = await md5Blob(file),
+          duplicate = (await findDocumentsByMd5(digest)).length > 0;
+        if (duplicate && !(await this.confirmDuplicate(file.name))) continue;
+        const name = duplicate
+          ? /\.pdf$/i.test(file.name)
+            ? file.name.replace(/(\.pdf)$/i, '副本$1')
+            : `${file.name}副本.pdf`
+          : file.name;
         pdf = await loadPdf(file, () => inputDialog('打开加密 PDF', { password: true, label: 'PDF 密码' }));
-        const doc = await addDocument(file, file.name, pdf.numPages, null, folderId);
+        const doc = await addDocument(file, name, pdf.numPages, null, folderId);
         this.documents.push(doc);
         await this.openDocument(doc.id, pdf);
         pdf = null;
@@ -592,8 +626,10 @@ class App {
       .forEach((btn) => btn.classList.toggle('active', btn.dataset.action === 'reader'));
   }
   async showLibrary() {
+    const fromReader = document.documentElement.dataset.view === 'reader';
+    const active = fromReader && this.activeId ? await get('documents', this.activeId) : null;
     this.showSecondary('library');
-    await this.library.open();
+    await this.library.open(fromReader ? { folderId: active?.folderId || null } : undefined);
   }
   showSecondary(view) {
     document.getElementById('workspace').hidden = true;

@@ -175,6 +175,8 @@ export async function readArchive(blob, password = '') {
         !rootAnchors.has(d.rootId) ||
         (d.folderId && !folderIds.has(d.folderId)) ||
         typeof d.name !== 'string' ||
+        (d.initialMd5 !== undefined &&
+          (typeof d.initialMd5 !== 'string' || !/^[a-f\d]{32}$/i.test(d.initialMd5))) ||
         !Number.isInteger(d.pages) ||
         d.pages < 1,
     )
