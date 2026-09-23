@@ -2,8 +2,10 @@ import { getSettings, saveSettings, PROVIDERS } from '../settings.js';
 import { uid, esc, chooseSaveTarget, saveFile, dateLabel, errorMessage } from '../utils.js';
 import { createArchive, importArchive, importFritiaSettings, syncWebDav, testWebDav } from '../archive.js';
 import { testProvider, listModels } from '../llm.js';
+import { providerKeyUrl, openProviderWebsite } from '../providers.js';
 import {
   icon,
+  providerLogo,
   button,
   iconButton,
   modal,
@@ -13,6 +15,8 @@ import {
   toast,
   inputDialog,
 } from './components.js';
+const providerMenu = () =>
+  `<div class="custom-select provider-add" data-select="provider-preset" data-value=""><button type="button" class="button select-trigger" data-action="add-provider" aria-label="添加" aria-haspopup="listbox" aria-expanded="false">${icon('plus')}<span>添加</span></button><div class="select-menu" role="listbox" aria-label="选择服务商" hidden>${PROVIDERS.map((p) => `<button type="button" role="option" aria-selected="false" data-value="${p.id}">${providerLogo(p.id)}<span>${p.name}</span></button>`).join('')}</div></div>`;
 export async function openSettings(app, tab = 'api') {
   const settings = await getSettings();
   let draft = structuredClone(settings);
@@ -52,9 +56,9 @@ export async function openSettings(app, tab = 'api') {
       .forEach((btn) => btn.classList.toggle('active', btn.dataset.action === `settings-${tab}`));
     if (tab === 'api') {
       const provider = draft.chatProviders.find((p) => p.id === activeProvider);
-      content.innerHTML = `<div class="section-heading"><div><h3>连接你的 AI</h3><p>保留多组配置，随时切换适合的模型。</p></div>${button('add-provider', 'plus', '添加')}</div><div class="provider-chips">${draft.chatProviders.map((p) => `<button class="provider-chip ${p.id === activeProvider ? 'active' : ''}" data-provider="${esc(p.id)}">${icon('bot')}${esc(p.name)}${p.id === draft.defaultChatProviderId ? '<span class="badge">默认</span>' : ''}</button>`).join('')}</div>${
+      content.innerHTML = `<div class="section-heading"><div><h3>连接你的 AI</h3><p>保留多组配置，随时切换适合的模型。</p></div>${providerMenu()}</div><div class="provider-chips">${draft.chatProviders.map((p) => `<button class="provider-chip ${p.id === activeProvider ? 'active' : ''}" data-provider="${esc(p.id)}">${icon('bot')}${esc(p.name)}${p.id === draft.defaultChatProviderId ? '<span class="badge">默认</span>' : ''}</button>`).join('')}</div>${
         provider
-          ? `<form id="provider-form" class="settings-form"><label class="field"><span>配置名称</span><input name="name" value="${esc(provider.name)}" required></label><label class="field"><span>Base URL</span><input name="baseUrl" type="url" placeholder="https://api.example.com/v1" value="${esc(provider.baseUrl)}" required></label><label class="field"><span>API Key</span><input name="apiKey" type="password" value="${esc(provider.apiKey)}" placeholder="本地模型可留空" autocomplete="new-password"></label><label class="field"><span>模型名称</span><div class="input-row"><input name="model" value="${esc(provider.model)}" placeholder="填写服务商提供的模型 ID" required>${iconButton('list-models', 'refresh-cw', '获取模型列表')}</div></label><div class="field"><span>接口协议</span>${select(
+          ? `<form id="provider-form" class="settings-form"><label class="field"><span>配置名称</span><input name="name" value="${esc(provider.name)}" required></label><label class="field"><span>Base URL</span><input name="baseUrl" type="url" placeholder="https://api.example.com/v1" value="${esc(provider.baseUrl)}" required></label><div class="field"><label for="provider-api-key">API Key</label><div class="input-row api-key-row"><input id="provider-api-key" name="apiKey" type="password" value="${esc(provider.apiKey)}" placeholder="本地模型可留空" autocomplete="new-password">${iconButton('toggle-api-key', 'eye', '显示 API Key')}${button('get-api-key', 'external-link', '获取')}</div></div><label class="field"><span>模型名称</span><div class="input-row"><input name="model" value="${esc(provider.model)}" placeholder="填写服务商提供的模型 ID" required>${iconButton('list-models', 'refresh-cw', '获取模型列表')}</div></label><div class="field"><span>接口协议</span>${select(
               'api-protocol',
               [
                 ['chat', 'Chat Completions 兼容接口'],
@@ -73,23 +77,49 @@ export async function openSettings(app, tab = 'api') {
             render();
           }),
       );
-      content.querySelector('[data-action="add-provider"]').onclick = () => {
+      content.querySelector('[data-select="provider-preset"]').addEventListener('valuechange', (event) => {
         capture();
+        const preset = PROVIDERS.find((p) => p.id === event.detail);
+        if (!preset) return;
         const id = uid();
         draft.chatProviders.push({
+          ...preset,
           id,
-          name: '新 API',
-          baseUrl: '',
           apiKey: '',
-          model: '',
-          protocol: 'chat',
-          pdfInput: false,
-          pdfOutput: false,
         });
         activeProvider = id;
         if (!draft.defaultChatProviderId) draft.defaultChatProviderId = id;
         render();
-      };
+      });
+      const form = content.querySelector('#provider-form');
+      if (form) {
+        const eye = form.querySelector('[data-action="toggle-api-key"]');
+        const getKey = form.querySelector('[data-action="get-api-key"]');
+        eye.setAttribute('aria-pressed', 'false');
+        eye.onclick = () => {
+          const visible = form.elements.apiKey.type === 'password';
+          form.elements.apiKey.type = visible ? 'text' : 'password';
+          eye.innerHTML = icon(visible ? 'eye-off' : 'eye');
+          eye.setAttribute('aria-pressed', String(visible));
+          eye.title = visible ? '隐藏 API Key' : '显示 API Key';
+          eye.setAttribute('aria-label', eye.title);
+        };
+        const updateKeyLink = () => {
+          getKey.disabled = !providerKeyUrl(form.elements.baseUrl.value);
+        };
+        form.elements.baseUrl.addEventListener('input', updateKeyLink);
+        getKey.onclick = async () => {
+          getKey.disabled = true;
+          try {
+            await openProviderWebsite(form.elements.baseUrl.value);
+          } catch (error) {
+            toast(errorMessage(error), 'error');
+          } finally {
+            updateKeyLink();
+          }
+        };
+        updateKeyLink();
+      }
       content.querySelector('[data-action="delete-provider"]')?.addEventListener('click', () => {
         draft.chatProviders = draft.chatProviders.filter((p) => p.id !== activeProvider);
         if (draft.defaultChatProviderId === activeProvider)
@@ -236,7 +266,7 @@ export async function openSettings(app, tab = 'api') {
         toast('云端和本地数据已合并同步');
       });
     } else {
-      content.innerHTML = `<h3>纸间 · Paper Bridge <span class="badge">0.2.0</span></h3><p>让语言不再打断阅读。</p><div class="help-list"><p><b>选词与翻译</b><br>在 PDF 上拖选文字，单词进入在线词典，多词句子进入翻译。点击工具栏按钮可添加批注。</p><p><b>全文翻译</b><br>文件输入需接口支持。普通模型会接收提取后的完整文字；扫描件需要支持 PDF 的视觉模型。模型原生 PDF 需支持代码执行与文件输出，也可选择本地排版（视觉 PDF，无文字层）。</p><p><b>快捷键</b><br>Ctrl / ⌘ + O 打开文档 · Ctrl / ⌘ + Z 撤销批注 · Ctrl / ⌘ + Shift + Z 重做 · Esc 关闭菜单</p><p><b>数据与连接</b><br>文档默认只存本机。翻译或问答时将选定文本 / 文档发送给所选服务商。在线词典使用 Free Dictionary、Wiktionary；免费翻译使用 MyMemory，存在网络与额度限制。</p><p><b>开源致谢</b><br>PDF.js · pdf-lib · KaTeX · Lucide · Fluent Emoji · Noto Sans<br>设置及存档流程继承海姆休息室（GPL-3.0）。</p></div>`;
+      content.innerHTML = `<h3>纸间 · Paper Bridge <span class="badge">0.2.1</span></h3><p>让语言不再打断阅读。</p><div class="help-list"><p><b>选词与翻译</b><br>在 PDF 上拖选文字，单词进入在线词典，多词句子进入翻译。点击工具栏按钮可添加批注。</p><p><b>全文翻译</b><br>文件输入需接口支持。普通模型会接收提取后的完整文字；扫描件需要支持 PDF 的视觉模型。模型原生 PDF 需支持代码执行与文件输出，也可选择本地排版（视觉 PDF，无文字层）。</p><p><b>快捷键</b><br>Ctrl / ⌘ + O 打开文档 · Ctrl / ⌘ + Z 撤销批注 · Ctrl / ⌘ + Shift + Z 重做 · Esc 关闭菜单</p><p><b>数据与连接</b><br>文档默认只存本机。翻译或问答时将选定文本 / 文档发送给所选服务商。在线词典使用 Free Dictionary、Wiktionary；免费翻译使用 MyMemory，存在网络与额度限制。</p><p><b>开源致谢</b><br>PDF.js · pdf-lib · KaTeX · Lucide · Fluent Emoji · Noto Sans<br>设置及存档流程继承海姆休息室（GPL-3.0）。</p></div>`;
     }
     bindSelects(content);
   };
@@ -251,18 +281,34 @@ export async function openSettings(app, tab = 'api') {
   render();
 }
 export async function onboarding(app) {
-  if ((await getSettings()).onboardingDone) return;
+  if ((await getSettings()).hideOnboarding) return;
   let step = 0;
   let preset = PROVIDERS[0];
-  const dialog = modal('欢迎来到纸间', `<div id="onboarding-content"></div>`, { closable: false });
+  const dialog = modal(
+    '欢迎来到纸间',
+    `<div id="onboarding-content"></div><label class="toggle-row onboarding-preference"><span>不再显示</span><input name="hideOnboarding" type="checkbox"><span class="switch"></span></label>`,
+    { closable: false },
+  );
   const root = dialog.element.querySelector('#onboarding-content');
+  const preference = dialog.element.querySelector('[name="hideOnboarding"]');
+  let preferenceSave = Promise.resolve();
+  preference.onchange = () => {
+    const hideOnboarding = preference.checked;
+    preferenceSave = preferenceSave
+      .then(() => saveSettings({ hideOnboarding }))
+      .catch((error) => {
+        preference.checked = false;
+        toast(errorMessage(error), 'error');
+      });
+  };
   const render = () => {
     if (step === 0)
       root.innerHTML = `<div class="welcome"><div class="welcome-symbol">${icon('book-open')}</div><p class="eyebrow">READ BEYOND LANGUAGE</p><h2>专注阅读，跨越语言。</h2><p>阅读、批注、翻译与思考，<br>都留在同一张书桌上。</p><div class="welcome-features"><span>${icon('shield-check')}文档本地保存</span><span>${icon('languages')}即开即用词典</span></div></div><div class="onboarding-actions">${button('skip', 'arrow-up-right', '先使用在线翻译')}${button('next', 'sparkles', '配置我的 AI', 'primary')}</div>`;
     else
-      root.innerHTML = `<div class="step-label">01 选择服务商 <span>→</span> 02 填写连接 <span>→</span> 03 开始阅读</div><div class="preset-grid">${PROVIDERS.map((p) => `<button class="preset ${p.id === preset.id ? 'active' : ''}" data-preset="${p.id}">${icon(p.id === 'custom' ? 'settings-2' : 'bot')}<span>${p.name}</span></button>`).join('')}</div><form id="onboarding-form"><label class="field"><span>Base URL</span><input name="baseUrl" type="url" value="${esc(preset.baseUrl)}" required></label><label class="field"><span>API Key</span><input name="apiKey" type="password" placeholder="从服务商控制台获取，本地模型可留空" autocomplete="new-password"></label><label class="field"><span>模型名称</span><input name="model" value="${esc(preset.model)}" placeholder="填写服务商提供的模型 ID" required></label><p class="note" id="onboarding-status">之后可在设置中添加更多 API、调整文件输入能力。</p><div class="onboarding-actions">${button('back', 'arrow-left', '返回')}${button('test', 'refresh-cw', '测试连接')}<button type="submit" class="button primary">${icon('check')}保存并开始</button></div></form>`;
+      root.innerHTML = `<div class="step-label">01 选择服务商 <span>→</span> 02 填写连接 <span>→</span> 03 开始阅读</div><div class="preset-grid">${PROVIDERS.map((p) => `<button class="preset ${p.id === preset.id ? 'active' : ''}" data-preset="${p.id}">${providerLogo(p.id)}<span>${p.name}</span></button>`).join('')}</div><form id="onboarding-form"><label class="field"><span>Base URL</span><input name="baseUrl" type="url" value="${esc(preset.baseUrl)}" required></label><label class="field"><span>API Key</span><input name="apiKey" type="password" placeholder="从服务商控制台获取，本地模型可留空" autocomplete="new-password"></label><label class="field"><span>模型名称</span><input name="model" value="${esc(preset.model)}" placeholder="填写服务商提供的模型 ID" required></label><p class="note" id="onboarding-status">之后可在设置中添加更多 API、调整文件输入能力。</p><div class="onboarding-actions">${button('back', 'arrow-left', '返回')}${button('test', 'refresh-cw', '测试连接')}<button type="submit" class="button primary">${icon('check')}保存并开始</button></div></form>`;
     root.querySelector('[data-action="skip"]')?.addEventListener('click', async () => {
-      await saveSettings({ onboardingDone: true });
+      await preferenceSave;
+      await saveSettings({ onboardingDone: true, hideOnboarding: preference.checked });
       dialog.close();
     });
     root.querySelector('[data-action="next"]')?.addEventListener('click', () => {
@@ -302,11 +348,13 @@ export async function onboarding(app) {
       event.preventDefault();
       try {
         const p = provider();
+        await preferenceSave;
         const old = await getSettings();
         await saveSettings({
           chatProviders: [...old.chatProviders, p],
           defaultChatProviderId: p.id,
           onboardingDone: true,
+          hideOnboarding: preference.checked,
         });
         dialog.close();
         app.refreshAssistant();

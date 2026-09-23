@@ -146,7 +146,7 @@ export class LibraryView {
             const open = folder
               ? `data-folder="${esc(item.id)}"`
               : `data-action="open-document" data-id="${esc(item.id)}"`;
-            return `<article class="library-card ${folder ? 'folder-card' : ''} ${checked ? 'selected' : ''}" data-object-key="${esc(key)}"><button class="library-check" role="checkbox" aria-checked="${checked}" aria-label="选择${folder ? '文件夹' : '文档'} ${esc(item.name)}" data-select-object="${esc(key)}">${checked ? icon('check') : ''}</button><button class="document-cover" ${open}>${icon(folder ? 'folder-open' : 'file-text')}${folder ? '' : '<span>PDF</span>'}${!folder && item.rootId !== item.id ? '<small>译文</small>' : ''}</button><div class="library-card-body"><button class="library-document-name" ${open}>${esc(item.name)}</button><p>${folder ? '文件夹' : `${item.pages} 页 · ${sizeLabel(item.size)}`}</p><footer><span>${dateLabel(item.createdAt)}</span><div><button class="icon-button" data-action="library-rename" data-object="${esc(key)}" aria-label="重命名 ${esc(item.name)}" title="重命名">${icon('pencil')}</button>${folder ? '' : `<button class="icon-button" data-action="library-download-one" data-object="${esc(key)}" aria-label="下载原始 PDF" title="下载原始 PDF">${icon('download')}</button>`}</div></footer></div></article>`;
+            return `<article class="library-card ${folder ? 'folder-card' : ''} ${checked ? 'selected' : ''}" data-object-key="${esc(key)}"><button class="library-check" role="checkbox" aria-checked="${checked}" aria-label="选择${folder ? '文件夹' : '文档'} ${esc(item.name)}" data-select-object="${esc(key)}">${checked ? icon('check') : ''}</button><button class="document-cover" ${open}>${icon(folder ? 'folder-open' : 'file-text')}${folder ? '' : '<span>PDF</span>'}${!folder && item.rootId !== item.id ? '<small>译文</small>' : ''}</button><div class="library-card-body"><button class="library-document-name" ${open}>${esc(item.name)}</button><p>${folder ? '文件夹' : `${item.pages} 页 · ${sizeLabel(item.size)}`}</p><footer><span>${dateLabel(item.createdAt)}</span><div><button class="icon-button" data-action="library-rename" data-object="${esc(key)}" aria-label="重命名 ${esc(item.name)}" title="重命名">${icon('pencil')}</button>${folder ? '' : `<button class="icon-button" data-action="library-download-one" data-object="${esc(key)}" aria-label="下载 PDF" title="下载 PDF">${icon('download')}</button>`}</div></footer></div></article>`;
           })
           .join('')
       : `<div class="library-empty">${icon('folder-open')}<h2>${this.query ? '没有匹配的对象' : '这个文件夹还是空的'}</h2><p>可以新建文件夹或导入 PDF。</p></div>`;
@@ -327,10 +327,9 @@ export class LibraryView {
         return;
       }
       const rows = [];
+      const { editedDocumentBlob } = await import('../document-download.js');
       for (const file of plan.files) {
-        const row = await get('files', file.id);
-        if (!row) throw new Error('所选 PDF 已不存在，未下载');
-        rows.push({ file, blob: row.blob });
+        rows.push({ file, blob: await editedDocumentBlob(file.id) });
       }
       if (rows.length === 1) {
         await saveFile(rows[0].blob, name, { target });

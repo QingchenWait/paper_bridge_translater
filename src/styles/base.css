@@ -669,6 +669,13 @@ img {
   inset: 0;
   pointer-events: none;
 }
+.pdf-scroll.selecting-text .annotations *,
+.pdf-scroll.selecting-text .ink-layer {
+  pointer-events: none !important;
+}
+.pdf-scroll.selecting-text .annotations {
+  user-select: none;
+}
 .mark {
   position: absolute;
   pointer-events: none;
@@ -1292,6 +1299,30 @@ img {
 }
 .input-row input {
   flex: 1;
+}
+.api-key-row input {
+  min-width: 0;
+}
+.api-key-row > button {
+  flex: 0 0 auto;
+}
+.provider-add .select-menu {
+  right: 0;
+  left: auto;
+  min-width: 10rem;
+  max-height: min(24rem, 55dvh);
+}
+.provider-add .select-menu button {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+.provider-logo {
+  object-fit: contain;
+  filter: none;
+}
+.onboarding-preference {
+  margin-top: 1rem;
 }
 .modal-actions,
 .form-actions {

@@ -9,6 +9,7 @@ async function file(name) {
 }
 async function setup(page, names = ['Original.pdf', 'Translated.pdf', 'Other.pdf']) {
   await page.goto('/');
+  await page.getByRole('checkbox', { name: '不再显示', exact: true }).check();
   await page.getByRole('button', { name: '先使用在线翻译' }).click();
   await page.locator('#pdf-input').setInputFiles(await Promise.all(names.map(file)));
   await expect(page.locator('.document-tab')).toHaveCount(names.length);
@@ -338,7 +339,11 @@ test('database v1 upgrades additively and preserves an existing PDF and its anno
           createdAt: 1,
           updatedAt: 1,
         });
-        tx.objectStore('settings').put({ id: 'app', value: { onboardingDone: true }, updatedAt: 1 });
+        tx.objectStore('settings').put({
+          id: 'app',
+          value: { onboardingDone: true, hideOnboarding: true },
+          updatedAt: 1,
+        });
         tx.objectStore('settings').put({
           id: 'workspace',
           value: { openIds: ['legacy-doc'], activeId: 'legacy-doc' },

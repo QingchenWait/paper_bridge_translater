@@ -1,32 +1,6 @@
 // Adapted from 海姆休息室 src/js/settings.js (GPL-3.0); field meanings remain compatible.
 import { get, put } from './storage.js';
-export const PROVIDERS = [
-  {
-    id: 'deepseek',
-    name: 'DeepSeek',
-    baseUrl: 'https://api.deepseek.com',
-    model: 'deepseek-chat',
-    protocol: 'chat',
-    pdfInput: false,
-  },
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    baseUrl: 'https://api.openai.com/v1',
-    model: '',
-    protocol: 'responses',
-    pdfInput: true,
-  },
-  {
-    id: 'mimo',
-    name: 'Xiaomi MiMo',
-    baseUrl: 'https://api.xiaomimimo.com/v1',
-    model: '',
-    protocol: 'chat',
-    pdfInput: false,
-  },
-  { id: 'custom', name: '自定义 / 本地模型', baseUrl: '', model: '', protocol: 'chat', pdfInput: false },
-];
+export { PROVIDERS } from './providers.js';
 export function normalizeSettings(raw = {}) {
   const source = raw.chatProviders?.length
     ? raw.chatProviders
@@ -69,6 +43,7 @@ export function normalizeSettings(raw = {}) {
     translationProviderId: raw.translationProviderId || selected?.id || '',
     translationStyle: raw.translationStyle || '学术论文',
     onboardingDone: raw.onboardingDone === true,
+    hideOnboarding: raw.hideOnboarding === true,
     webdav: {
       url: '',
       path: '/paper-bridge',

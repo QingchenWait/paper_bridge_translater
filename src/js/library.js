@@ -200,14 +200,12 @@ export async function deleteSelection(plan) {
       if (affectedRoots.has(row.rootId) && (ids.has(row.documentId) || ids.has(row.generatedDocumentId))) {
         const survivor = remaining.find((d) => d.rootId === row.rootId);
         if (survivor)
-          await tx
-            .objectStore('translations')
-            .put({
-              ...row,
-              documentId: ids.has(row.documentId) ? survivor.id : row.documentId,
-              generatedDocumentId: ids.has(row.generatedDocumentId) ? null : row.generatedDocumentId,
-              updatedAt: now,
-            });
+          await tx.objectStore('translations').put({
+            ...row,
+            documentId: ids.has(row.documentId) ? survivor.id : row.documentId,
+            generatedDocumentId: ids.has(row.generatedDocumentId) ? null : row.generatedDocumentId,
+            updatedAt: now,
+          });
       }
     }
     const removedFolders = [];
@@ -291,13 +289,12 @@ export function downloadPlan(state, keys) {
   return { files, folders: [...assigned.values()], zip: folders.length > 0 || files.length > 2 };
 }
 export async function buildLibraryZip(plan) {
+  const { editedDocumentBlob } = await import('./document-download.js');
   const entries = Object.create(null);
   for (const path of plan.folders) entries[path] = new Uint8Array();
-  const db = await database();
   for (const file of plan.files) {
-    const row = await db.get('files', file.id);
-    if (!row) throw new Error('选中的文件已不存在，已取消打包');
-    entries[file.path] = [new Uint8Array(await row.blob.arrayBuffer()), { level: 0 }];
+    const blob = await editedDocumentBlob(file.id);
+    entries[file.path] = [new Uint8Array(await blob.arrayBuffer()), { level: 0 }];
   }
   const bytes = await new Promise((resolve, reject) =>
     zip(entries, { level: 0 }, (error, data) => (error ? reject(error) : resolve(data))),

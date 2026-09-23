@@ -3,6 +3,15 @@ const icons = import.meta.glob('../../_logo/icons/*.svg', { eager: true, query: 
 const art = import.meta.glob('../../_logo/art/*.png', { eager: true, query: '?url', import: 'default' });
 export const icon = (name, extra = '') =>
   `<img class="icon ${extra}" src="${icons[`../../_logo/icons/${name}.svg`] || icons['../../_logo/icons/file-text.svg']}" alt="" draggable="false">`;
+const providerLogos = import.meta.glob('../../_logo/llms/*.svg', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+});
+export const providerLogo = (id) =>
+  providerLogos[`../../_logo/llms/${id}.svg`]
+    ? `<img class="icon provider-logo" src="${providerLogos[`../../_logo/llms/${id}.svg`]}" alt="" draggable="false">`
+    : icon('settings-2');
 export const illustration = (name) => art[`../../_logo/art/${name}.png`] || '';
 export const button = (action, name, label, className = '') =>
   `<button type="button" class="button ${className}" data-action="${action}">${icon(name)}<span>${label}</span></button>`;

@@ -65,6 +65,7 @@ try {
     window.showSaveFilePicker = undefined;
   });
   await page.goto(`${base}/paper-bridge/`);
+  await page.getByRole('checkbox', { name: '不再显示', exact: true }).check();
   await page.getByRole('button', { name: '先使用在线翻译' }).click();
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.Helvetica);

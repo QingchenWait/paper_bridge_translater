@@ -200,3 +200,8 @@
     height: 10rem;
   }
 }
+@media (min-width: 961px) {
+  .api-key-row [data-action='get-api-key'] {
+    padding-inline: 0.8rem;
+  }
+}

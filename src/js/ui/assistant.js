@@ -445,7 +445,10 @@ export class Assistant {
         await patch('translations', record.id, { generatedDocumentId: translated.id });
       }
       if (open) await this.app.openDocument(translated.id);
-      else await saveFile((await get('files', translated.id)).blob, translated.name, { target: saveTarget });
+      else {
+        const { editedDocumentBlob } = await import('../document-download.js');
+        await saveFile(await editedDocumentBlob(translated.id), translated.name, { target: saveTarget });
+      }
     } finally {
       this.exportingTranslations.delete(record.id);
       this.updateExportProgress();

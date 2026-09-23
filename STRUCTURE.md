@@ -1,6 +1,6 @@
 # 项目结构与开发逻辑
 
-适用版本：0.2.0。入口为 `index.html` → `src/js/main.js`。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
+适用版本：0.2.1。入口为 `index.html` → `src/js/main.js`。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
 
 ## 文件树
 
@@ -28,13 +28,17 @@ pdf_translater/
 │  ├─ _logo/
 │  │  ├─ LUCIDE-LICENSE
 │  │  ├─ FLUENT-LICENSE
-│  │  ├─ icons/*.svg               61 个已下载 Lucide 图标，清单见下
+│  │  ├─ LOBE-ICONS-LICENSE
+│  │  ├─ llms/{deepseek,mimo,qwen,openai,glm,kimi,lmstudio}.svg
+│  │  ├─ icons/*.svg               62 个已下载 Lucide 图标，清单见下
 │  │  └─ art/{open-book,sparkles}.png
 │  ├─ js/
 │  │  ├─ main.js                   应用协调、标签、工具栏、文档管理
 │  │  ├─ storage.js                九表 IndexedDB、事务写入、精确删除合并
 │  │  ├─ library.js                文件夹、选择范围、移动、删除计划及 ZIP
 │  │  ├─ settings.js               多 API 兼容配置、归一化、默认服务
+│  │  ├─ providers.js              八种配置模板、官网映射和浏览器/客户端打开入口
+│  │  ├─ document-download.js      一致快照合并编辑，所有 PDF 下载共用
 │  │  ├─ utils.js                  转义、UUID、下载、哈希、格式化
 │  │  ├─ text.js                   PDF 排版清洗、单词判断、按字节切片
 │  │  ├─ translation.js            免费词典、词形补充、MyMemory 翻译
@@ -52,7 +56,7 @@ pdf_translater/
 │  │     ├─ assistant.js           划词、全文、AI 会话与任务状态
 │  │     ├─ library.js             文档管理卡片/列表、多选和操作弹窗
 │  │     ├─ pdf-navigation.js      缩略图、内置书签、目标解析及导航渲染生命周期
-│  │     ├─ settings-panel.js      设置四页、首次引导、迁移入口
+│  │     ├─ settings-panel.js      设置四页、启动引导、迁移入口
 │  │     ├─ desktop.js             桌面状态和分栏调整独立交互
 │  │     └─ mobile.js              移动端分屏、视口；保留阅读选区供标注
 │  └─ styles/
@@ -71,6 +75,7 @@ pdf_translater/
 │  └─ verify-dist.mjs              生产子路径静态部署、无 CDN、中文导出检查
 ├─ tests/
 │  ├─ core.test.mjs                数据、清洗、SSE 和存档协议测试
+│  ├─ providers.test.mjs           模板、可信官网映射、原配置保留与原生桥接测试
 │  ├─ selection-actions.test.mjs   选区规则、多类型/多页与局部清除测试
 │  ├─ save-file.test.mjs           单次保存、取消和写失败不重复下载测试
 │  ├─ shapes.test.mjs              形状几何、删除线及字号规则测试
@@ -80,7 +85,8 @@ pdf_translater/
 │     ├─ app.spec.js               原有合成 PDF 的真实浏览器功能回归
 │     ├─ optimizations.spec.js     状态反馈、松手翻译、绘图尺寸和导航回归
 │     ├─ reader-refinements.spec.js 字形坐标、旋转/裁切、高 DPI、拖动/历史及搜索浮窗
-│     └─ library.spec.js           文档库交互、共享历史、下载、切换锁和无损升级
+│     ├─ library.spec.js           文档库交互、共享历史、下载、切换锁和无损升级
+│     └─ editing-settings.spec.js  编辑导出回读、选词/绘图手势、引导/API 设置回归
 ├─ dist/                           构建产物，不手工编辑
 ├─ node_modules/                   npm 依赖，不手工编辑
 ├─ .cache/                         npm 缓存、开发期官方文档，不进入发布
@@ -95,6 +101,8 @@ pdf_translater/
 
 0.2.0 追加：`folder-plus.svg`、`folder-input.svg`、`layout-grid.svg`、`list.svg`、`arrow-up.svg`、`arrow-down.svg`、`folder-tree.svg`（Lucide 0.468.0）。
 
+0.2.1 追加 `eye-off.svg`（Lucide 0.468.0）和七个厂商 LOGO（Lobe Icons 固定提交，下载出处见 THIRD_PARTY.md）。
+
 ## 数据模型与不变量
 
 数据库名 `paper-bridge`，版本 2；所有对象仓库以 `id` 为 keyPath。升级仅新增缺失表，旧文档 folderId 缺省视为根目录，不重写或清除原数据。
@@ -107,7 +115,7 @@ pdf_translater/
 | conversations | id, rootId, title, createdAt, updatedAt | 逻辑文档下多条独立会话；原文和译文共享 |
 | messages | id, conversationId, role, content, status, error?, createdAt, updatedAt, recovered? | 用户先保存再请求；助手逐增量保存；不按轮数裁剪 |
 | translations | id, documentId, rootId, content, language, providerId, status, error?, output, generatedDocumentId? | 多次全文翻译记录及 PDF 产物关联 |
-| settings | id, value, updatedAt | `app` 存 API、翻译/WebDAV；`workspace` 存标签/当前对话；`annotation-tools` 存工具偏好；`library-view` 存当前目录、卡片/列表及排序 |
+| settings | id, value, updatedAt | `app` 存 API、翻译/WebDAV、hideOnboarding；`workspace` 存标签/当前对话；`annotation-tools` 存工具偏好；`library-view` 存当前目录、卡片/列表及排序 |
 | folders | id, parentId, name, createdAt, updatedAt | parentId 为空表示根目录，禁止自引用和循环，不以显示名称确定操作范围 |
 | deletions | id, store, key, documentId?/rootId?/conversationId?, updatedAt | 精确删除标记，id=`store-key`；只记录已删实体 ID 和所有者，不保存文件内容，不递归推导额外删除 |
 
@@ -142,16 +150,24 @@ pdf_translater/
 - `planDeletion(state,keys)`：生成要审核的文档/文件夹 ID、名称和完整显示路径清单。
 - `deleteSelection(plan)`：确认清单与执行时有效选区取交集，绝不纳入新后代；精确删 metadata/Blob/批注，仅无存活组成员时删共享会话、消息和全文历史；仍有成员则重绑必要引用；空目录逐层移除，非空目录保留；一个事务提交并写删除标记。
 - `downloadPlan(state,keys)`：选中文件夹包含自身/所有后代/空目录，文件不会隐式携带配对文档；超过两 PDF 或含文件夹则 ZIP；安全路径与重名序号防止丢文件。
-- `buildLibraryZip(plan)`：按计划读取原始 PDF Blob 生成 ZIP；任一选中文件缺失则报错，不静默漏掉内容。
+- `buildLibraryZip(plan)`：按计划逐份调用 editedDocumentBlob 合并当前编辑后生成 ZIP；任一文件缺失或导出失败则报错，不静默改用原始文件或漏掉内容。
 
 ### settings.js
 
-- `PROVIDERS`：首次引导用服务商模板。OpenAI 和 MiMo 模型名称由用户填写。
+- `PROVIDERS`：从 providers.js 兼容重导出，供启动引导与“添加”菜单复用。
 - `normalizeSettings(raw)`：兼容海姆休息室单 API 和多 API 格式；规范化 URL、去重 provider ID、同步默认三字段。
 - `translationProviderId`：划词/句子翻译专用 API 偏好；旧数据缺省取默认 API，不修改 `defaultChatProviderId`。
 - `getSettings()`、`reloadSettings()`：读取/重载配置缓存。
 - `saveSettings(next)`：先提交存储再更新缓存和派发 `settings-changed`。
 - `getProvider(settings,id?)`：选择 API，缺少地址或模型时给出明确错误。
+
+### providers.js / document-download.js
+
+- `PROVIDERS`：DeepSeek、MiMO、Qwen、OpenAI、GLM、Kimi、LM Studio、自定义八个模板；名称、Base URL、model 按用户指定值，官网 keyUrl 仅供固定链接映射；模板不应用于已有配置。具体值见 README。
+- `providerKeyUrl(baseUrl)`：读取当前输入，按完整主机名匹配已知服务；拒绝无效协议、内嵌凭据、自定义端口和仿冒后缀域名，返回固定官网 URL 或 null，绝不携带输入的查询参数/Key。
+- `openProviderWebsite(baseUrl)`：网页通过 noopener/noreferrer 打开新标签；Tauri 2 使用 opener.openUrl 或 plugin:opener|open_url，Tauri 1 使用 shell.open，唤起默认浏览器。打包需启用插件权限，仓库不包含原生安装包。
+- `editedDocumentBlob(documentId)`：readonly 事务读取 documents/files/annotations 的同一快照；仅合并所属文档未删除记录。没有编辑直接返回原 Blob，有编辑按需加载 PDF.js/pdf-lib 并复用 exportAnnotatedPdf，finally 释放独立源解析器；不覆盖数据库文件、不依赖随标签切换销毁的阅读器实例。阅读栏、文档管理所有下载模式、已生成译文下载均复用。
+- `hideOnboarding`：默认 false，只有显式开关设置为 true 才跳过引导；onboardingDone 保留兼容字段但不再控制弹出。切换开关立即保存，跳过/完成前等待保存，随既有设置备份流程持久化。
 
 ### text.js / translation.js
 
@@ -210,8 +226,10 @@ pdf_translater/
 - `undo(redo)`：提交对应 before/after 或 tombstone，然后定位操作页及位置。失败恢复栈；历史仍仅本次会话有效。
 - 选区动作历史为 `{changes:[{before,after}],location?}`，保留局部清除真实位置；拖动和编辑使用 before/after，兼容原笔迹创建的历史格式。
 - `editAnnotation(annotation)`：文本或便签编辑/删除回调，纳入历史。
-- `startAnnotationDrag(event,page)`：命中便签/文本框/形状后由页面捕获指针；3px 内仍视为点击编辑，超过阈值预览位移，松手事务提交、取消恢复。`cancelAnnotationDrag` 清理手势、监听和捕获。
+- `startAnnotationDrag(event,page)`：选词手势期间或形状菜单首笔转发时不介入；其他情况下命中便签/文本框/形状后由页面捕获指针；3px 内仍视为点击编辑，超过阈值预览位移，松手事务提交、取消恢复。`cancelAnnotationDrag` 清理手势、监听和捕获。
 - `drawAnnotations(page)`：重绘标记和带 touch-action 的透明形状命中区域；字体/笔宽继续按已有数据绘制。
+- `releaseTextSelection()`：指针和触控均已释放时移除 selecting-text；取词期间通过此类关闭所有覆盖元素 pointer-events，取消/窗口失焦也清理。
+- `beginShapeFromPointer(event)`：菜单在窗口 pointerdown 捕获阶段关闭并激活后，若原目标尚非墨迹层，转发首次按下到同页画布，保留首笔鼠标/触控绘制。
 - `bindInk(canvas,page)`：原手绘/形状创建保留；橡皮擦按笔迹线段或形状几何命中并删除整个对象，纳入历史。
 
 ### pdf-text.js / pdf-search.js
@@ -270,7 +288,7 @@ pdf_translater/
 - `rename`：沿用文档重命名，并支持文件夹命名。
 - `move`：展示根目录和内部文件树，屏蔽选中文件夹及其后代作为目标；在当前目标内新建子目录，确认后调用 moveSelection。
 - `remove`：生成并展示删除对象路径清单；确认后等待受影响任务退出，执行精确事务，再协调工作区和重绘。
-- `download`：从缓存库状态立即生成选择计划并选址；单文件直接存、两文件共用目录、超过两文件/含目录用 ZIP；无选择器默认下载。保存目录内遇同名文件采用新序号，文件管理下载保持原始 PDF 行为。
+- `download`：从缓存库状态立即生成选择计划并选址；单文件直接存、两文件共用目录、超过两文件/含目录用 ZIP；无选择器默认下载。保存目录内遇同名文件采用新序号，每份文件经 editedDocumentBlob 合并编辑。
 
 ### ui/components.js
 
@@ -280,8 +298,9 @@ pdf_translater/
 
 ### ui/settings-panel.js
 
-- `openSettings(app,tab)`：API、备份、WebDAV、帮助四视图；API 草稿只在保存后持久化；测试不覆盖设置。
-- `onboarding(app)`：首次欢迎→选择服务→填地址/Key/模型→测试→保存；也可先使用免费翻译。
+- `providerMenu()`：复用 custom-select 的自绘服务商菜单、逐行厂商 LOGO，选择后 capture 现有草稿再追加新配置。
+- `openSettings(app,tab)`：API、备份、WebDAV、帮助四视图；API 草稿只在保存后持久化；眼睛按钮仅切换输入类型，获取按钮监听当前 URL 输入并在点击时重读；测试不覆盖设置。
+- `onboarding(app)`：hideOnboarding 为 false 时，每次欢迎→选择服务→填地址/Key/模型→测试→保存；也可先使用免费翻译。独立自绘“不再显示”开关跨步骤保留且持久化，不改变旧 API 配置。
 
 ### ui/assistant.js 的 Assistant
 
@@ -290,7 +309,7 @@ pdf_translater/
 - `settings`：按钮下方的紧凑引擎、源/目标语言、学术风格浮层；引擎逐行列出 MyMemory 和全部配置的 LLM，保存专用 API 选择。
 - `renderFull` / `startFull`：全文参数、历史、按文档分组的独立任务、流式落盘和阶段反馈。
 - `setFullCollapsed(documentId,collapsed)`：首段译文保存后动画折叠参数；更新可展开的 sticky 进度栏，折叠内容 inert 防止焦点进入；手动展开不会在后续流式增量中重新折叠。
-- `exportTranslation`：按译文记录互斥，复用或新建译文 PDF；写入关联根 ID；打开或下载。全文请求直接返回 PDF 时不重复进入本地转换分支。
+- `exportTranslation`：按译文记录互斥，复用或新建译文 PDF；写入关联根 ID；打开或经 editedDocumentBlob 合并译文编辑后下载。全文请求直接返回 PDF 时不重复进入本地转换分支。
 - `renderChat` / `appendMessage`：按 rootId / conversationId 加载消息，显示部分结果和恢复副本。
 - `appendMessage` 对仍有活动任务且尚无内容的助手消息显示“正在思考”环；onDelta 替换为内容，失败/停止后按最终状态渲染。
 - `updateExportProgress()`：按 result-toolbar 的 translationId 读取转换互斥集合，设置打开/下载按钮的旋转图标、aria-busy 和禁用状态；转换的 try/finally 及历史切换均同步调用。
@@ -384,7 +403,10 @@ pdf_translater/
 | #settings-content / #provider-form | 多 API 配置及能力设置 | settings-panel |
 | #cloud-form | WebDAV 账号、测试、同步和开关 | settings-panel / archive |
 | #archive-input | 本地 ZIP / 加密存档选择 | settings-panel / archive |
-| #onboarding-content / #onboarding-form | 首次引导步骤 | onboarding |
+| #onboarding-content / #onboarding-form / [name=hideOnboarding] | 启动引导步骤及“不再显示”开关 | onboarding |
+| [data-select=provider-preset] / [data-action=add-provider] | 添加按钮下方的八种厂商模板菜单 | providerMenu / openSettings |
+| #provider-api-key / [data-action=toggle-api-key] / [data-action=get-api-key] | Key 隐藏/显示、按当前 Base URL 打开官网 | openSettings / openProviderWebsite |
+| #pdf-scroll.selecting-text | 鼠标/触控取词期间禁止覆盖元素交互 | PdfViewer.releaseTextSelection |
 | #color-popover / #tool-size / .shape-options | 颜色、字号/笔宽滑块、右侧 pt 数值、四种形状选择 | App.colorPicker |
 | .mobile-nav / [data-mobile-pane] | 手机阅读、翻译、文档与设置单页导航 | mobile.js |
 | #toast-root | 保存、失败、导入等实时反馈 | toast |

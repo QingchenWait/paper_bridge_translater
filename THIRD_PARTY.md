@@ -9,7 +9,8 @@
 | 同项目 `archive_sync.js` | 备份/WebDAV/CORS/定时同步流程，重写为 PDF 数据库事务合并 | GPL-3.0 |
 | [PDF.js](https://mozilla.github.io/pdf.js/examples/) | 渲染、文本提取、选择层及文字层 CSS | Apache-2.0；版本由 package-lock 固定 |
 | [pdf-lib](https://pdf-lib.js.org/) | 修改和生成 PDF | MIT |
-| [Lucide](https://github.com/lucide-icons/lucide) | `src/_logo/icons` 中 61 个 SVG，使用主分支或 0.468.0 下载版本；0.2.0 新增文件夹/移动/视图/排序七个图标，保留原文件内容 | ISC；见 `src/_logo/LUCIDE-LICENSE` |
+| [Lucide](https://github.com/lucide-icons/lucide) | `src/_logo/icons` 中 62 个 SVG，使用主分支或 0.468.0 下载版本；0.2.0 新增文件夹/移动/视图/排序七个图标，保留原文件内容 | ISC；见 `src/_logo/LUCIDE-LICENSE` |
+| [Lobe Icons](https://github.com/lobehub/lobe-icons/tree/2e76c48721e91b9aaa40803a0fa2eb8aca7399c4/packages/static-svg/icons) | `src/_logo/llms` 七家厂商 LOGO，源文件分别为 deepseek-color、xiaomimimo、qwen-color、openai、zhipu-color、kimi-color、lmstudio，2026-09-23 直接下载，未重绘 | MIT；见 `src/_logo/LOBE-ICONS-LICENSE`；产品标识归对应品牌所有 |
 | [Fluent Emoji](https://github.com/microsoft/fluentui-emoji) | `src/_logo/art/open-book.png` 与 `sparkles.png`，3D 插画 | MIT；见 `src/_logo/FLUENT-LICENSE` |
 | [Noto CJK](https://github.com/notofonts/noto-cjk) | `public/fonts/NotoSansSC-Regular.otf`，按需加载的批注中文字体 | SIL OFL 1.1；见 `public/fonts/LICENSE` |
 | markdown-it、markdown-it-texmath、KaTeX、highlight.js | Markdown、数学与代码渲染 | 各包许可证见 node_modules；构建固定依赖版本 |
@@ -27,5 +28,7 @@
 - [MediaWiki Parse API](https://www.mediawiki.org/wiki/API:Parsing_wikitext)：通过 Wiktionary 获取英文 headword 词形，仅显示文本，不注入远端 HTML；词形链接回词条，遵循站点内容署名要求。
 - [OpenAI 文件输入](https://developers.openai.com/api/docs/guides/file-inputs)：Responses `input_file`、Chat Completions `file` 的 Base64 文件输入格式。
 - [OpenAI Code Interpreter](https://developers.openai.com/api/docs/guides/tools-code-interpreter)：工具容器、`container_file_citation` 与生成文件下载。
+
+- [Tauri opener 官方源码](https://github.com/tauri-apps/plugins-workspace/blob/v2/plugins/opener/guest-js/index.ts)：核对 openUrl → plugin:opener|open_url 默认系统浏览器调用；实现按需调用已有宿主桥接，不引入原生打包依赖。
 
 外部接口文档在开发时核对；最终运行不加载 CDN 代码。只有用户发起在线翻译、问答或云同步时访问对应外部服务。

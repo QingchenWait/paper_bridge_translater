@@ -35,6 +35,7 @@ async function fixture() {
 }
 async function setup(page) {
   await page.goto('/');
+  await page.getByRole('checkbox', { name: '不再显示', exact: true }).check();
   await page.getByRole('button', { name: '先使用在线翻译' }).click();
   const document = await fixture();
   await page.locator('#pdf-input').setInputFiles(document.file);
@@ -328,14 +329,13 @@ test('embedded Chinese fonts and high-DPI text layers use the same glyph advance
   const page = await context.newPage();
   try {
     await page.goto('http://127.0.0.1:5173');
+    await page.getByRole('checkbox', { name: '不再显示', exact: true }).check();
     await page.getByRole('button', { name: '先使用在线翻译' }).click();
-    await page
-      .locator('#pdf-input')
-      .setInputFiles({
-        name: 'Chinese.pdf',
-        mimeType: 'application/pdf',
-        buffer: Buffer.from(await pdf.save()),
-      });
+    await page.locator('#pdf-input').setInputFiles({
+      name: 'Chinese.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(await pdf.save()),
+    });
     await expect(page.locator('.textLayer span').first()).toBeVisible();
     const measurements = await page.evaluate(() => {
       const spans = [...document.querySelectorAll('.textLayer span')].filter((span) => span.textContent);

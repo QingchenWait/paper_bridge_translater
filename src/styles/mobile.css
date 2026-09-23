@@ -717,3 +717,14 @@
     font-size: 1.4rem;
   }
 }
+@media (max-width: 960px) {
+  .api-key-row {
+    gap: 0.25rem;
+  }
+  .api-key-row [data-action='get-api-key'] {
+    padding-inline: 0.5rem;
+  }
+  .provider-add .select-menu button {
+    min-height: 2.7rem;
+  }
+}

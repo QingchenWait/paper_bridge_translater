@@ -83,6 +83,13 @@ export class PdfViewer {
           clearTimeout(this.releaseTimer);
           this.selectionPointers.add(event.pointerId);
           this.translatedSelectionKey = '';
+          if (
+            this.tool === 'select' &&
+            !this.annotationDrag &&
+            !event.target.closest('[data-annotation-id]') &&
+            event.button === 0
+          )
+            container.classList.add('selecting-text');
         }
       },
       true,
@@ -93,6 +100,7 @@ export class PdfViewer {
         this.pointers.delete(event.pointerId);
         const fromPdf = this.selectionPointers.delete(event.pointerId) || container.contains(event.target);
         if (fromPdf) this.queueSelectionTranslation(event.pointerType === 'touch' ? 60 : 0);
+        this.releaseTextSelection();
       },
       true,
     );
@@ -102,6 +110,7 @@ export class PdfViewer {
         this.pointers.delete(event.pointerId);
         this.selectionPointers.delete(event.pointerId);
         clearTimeout(this.releaseTimer);
+        this.releaseTextSelection();
       },
       true,
     );
@@ -124,6 +133,7 @@ export class PdfViewer {
           this.pdfTouch = false;
           this.queueSelectionTranslation(60);
         }
+        this.releaseTextSelection();
       },
       { capture: true, passive: true },
     );
@@ -133,6 +143,7 @@ export class PdfViewer {
         this.touchCount = 0;
         this.pdfTouch = false;
         clearTimeout(this.releaseTimer);
+        this.releaseTextSelection();
       },
       { capture: true, passive: true },
     );
@@ -141,6 +152,7 @@ export class PdfViewer {
       this.selectionPointers.clear();
       this.touchCount = 0;
       clearTimeout(this.releaseTimer);
+      this.releaseTextSelection();
     });
     document.addEventListener('selectionchange', () => {
       clearTimeout(this.selectionTimer);
@@ -649,7 +661,14 @@ export class PdfViewer {
     this.callbacks.saved();
   }
   startAnnotationDrag(event, page) {
-    if (event.button !== 0 || this.annotationDrag || this.tool === 'eraser') return;
+    if (
+      event.button !== 0 ||
+      this.annotationDrag ||
+      this.tool === 'eraser' ||
+      this.container.classList.contains('selecting-text') ||
+      this.shapeMenuPointer === event
+    )
+      return;
     const shell = this.container.querySelector(`[data-page="${page}"]`);
     if (!shell) return;
     const bounds = shell.getBoundingClientRect(),
@@ -835,6 +854,15 @@ export class PdfViewer {
         layer.append(element);
       }
     }
+  }
+  releaseTextSelection() {
+    if (!this.pointers.size && !this.touchCount) this.container.classList.remove('selecting-text');
+  }
+  beginShapeFromPointer(event) {
+    const canvas = event.target.closest('.pdf-page')?.querySelector('.ink-layer');
+    if (!canvas || event.target === canvas) return;
+    this.shapeMenuPointer = event;
+    canvas.onpointerdown?.(event);
   }
   bindInk(canvas, page) {
     let points = null;

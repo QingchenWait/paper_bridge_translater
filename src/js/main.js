@@ -149,9 +149,31 @@ class App {
   }
   mount() {
     document.getElementById('app').innerHTML =
-      `<aside class="sidebar"><a class="brand" href="#" aria-label="纸间主页"><span class="brand-symbol">${icon('book-open')}</span><span class="brand-name">纸间<span>PAPER BRIDGE</span></span></a><nav class="main-nav">${button('reader', 'book-open', 'PDF 翻译', 'nav-item active')}${button('library', 'folder-open', '文档管理', 'nav-item')}${button('records', 'history', '翻译记录', 'nav-item')}</nav><div class="sidebar-bottom">${button('cloud', 'cloud', '云同步', 'nav-item')}${button('settings', 'settings-2', '设置', 'nav-item')}${button('help', 'circle-help', '使用帮助', 'nav-item')}<span class="version">v0.2.0</span></div></aside><main class="main-shell"><header class="mobile-header"><span>${icon('book-open')}纸间</span>${iconButton('upload', 'plus', '打开 PDF')}</header><div class="workspace" id="workspace"><aside id="pdf-navigation" class="pdf-navigation" aria-label="PDF 导航" hidden></aside><section class="reader-panel" aria-label="PDF 阅读区"><div class="document-bar"><div id="document-tabs" class="document-tabs"></div>${button('upload', 'plus', '打开 PDF', 'open-pdf')}</div><div class="toolbar" id="pdf-toolbar"></div><div class="reader-body"><div class="pdf-scroll" id="pdf-scroll"></div><div class="reader-empty" id="reader-empty"><div class="empty-book"><img src="${illustration('open-book')}" alt="打开的书"></div><div class="empty-caption">YOUR NEXT GREAT IDEA STARTS HERE</div><h1>翻开一页，<br>遇见更大的世界。</h1><p>将 PDF 拖到这里，开始一场没有语言边界的阅读。</p>${button('upload', 'upload', '打开本地 PDF', 'primary large')}<span class="upload-hint">支持多份文档 · 自动保存阅读进度</span><div class="empty-features"><span>${icon('highlighter')}随手批注</span><span>${icon('languages')}划词即译</span><span>${icon('sparkles')}AI 问答</span></div></div></div><footer class="reader-status"><span id="document-status">一张书桌，无限可能</span><span id="save-status">${icon('shield-check')}本地自动保存</span></footer></section><div class="split-handle" id="split-handle" role="separator" aria-label="调整左右栏宽度" aria-orientation="vertical" tabindex="0"></div><section class="assistant-panel" aria-label="翻译与 AI 助手"><header class="assistant-header"><div class="segmented" role="tablist"><button data-assistant-tab="selection" class="active" role="tab" aria-selected="true">划词翻译</button><button data-assistant-tab="full" role="tab" aria-selected="false">全文翻译</button><button data-assistant-tab="chat" role="tab" aria-selected="false">AI 问答</button></div><button id="translation-settings" class="translation-settings" title="翻译设置" aria-label="翻译设置">${icon('settings-2')}<span>翻译设置</span>${icon('chevron-down')}</button></header><div id="assistant-content" class="assistant-content"></div></section></div><section id="library-view" class="library-view" hidden></section><nav class="mobile-nav"><button class="active" data-mobile-pane="reader">${icon('book-open')}阅读</button><button data-mobile-pane="assistant">${icon('languages')}翻译 / AI</button>${button('library', 'folder-open', '文档')}${button('settings', 'settings-2', '设置')}</nav></main><div id="color-popover" class="color-popover" hidden></div>`;
+      `<aside class="sidebar"><a class="brand" href="#" aria-label="纸间主页"><span class="brand-symbol">${icon('book-open')}</span><span class="brand-name">纸间<span>PAPER BRIDGE</span></span></a><nav class="main-nav">${button('reader', 'book-open', 'PDF 翻译', 'nav-item active')}${button('library', 'folder-open', '文档管理', 'nav-item')}${button('records', 'history', '翻译记录', 'nav-item')}</nav><div class="sidebar-bottom">${button('cloud', 'cloud', '云同步', 'nav-item')}${button('settings', 'settings-2', '设置', 'nav-item')}${button('help', 'circle-help', '使用帮助', 'nav-item')}<span class="version">v0.2.1</span></div></aside><main class="main-shell"><header class="mobile-header"><span>${icon('book-open')}纸间</span>${iconButton('upload', 'plus', '打开 PDF')}</header><div class="workspace" id="workspace"><aside id="pdf-navigation" class="pdf-navigation" aria-label="PDF 导航" hidden></aside><section class="reader-panel" aria-label="PDF 阅读区"><div class="document-bar"><div id="document-tabs" class="document-tabs"></div>${button('upload', 'plus', '打开 PDF', 'open-pdf')}</div><div class="toolbar" id="pdf-toolbar"></div><div class="reader-body"><div class="pdf-scroll" id="pdf-scroll"></div><div class="reader-empty" id="reader-empty"><div class="empty-book"><img src="${illustration('open-book')}" alt="打开的书"></div><div class="empty-caption">YOUR NEXT GREAT IDEA STARTS HERE</div><h1>翻开一页，<br>遇见更大的世界。</h1><p>将 PDF 拖到这里，开始一场没有语言边界的阅读。</p>${button('upload', 'upload', '打开本地 PDF', 'primary large')}<span class="upload-hint">支持多份文档 · 自动保存阅读进度</span><div class="empty-features"><span>${icon('highlighter')}随手批注</span><span>${icon('languages')}划词即译</span><span>${icon('sparkles')}AI 问答</span></div></div></div><footer class="reader-status"><span id="document-status">一张书桌，无限可能</span><span id="save-status">${icon('shield-check')}本地自动保存</span></footer></section><div class="split-handle" id="split-handle" role="separator" aria-label="调整左右栏宽度" aria-orientation="vertical" tabindex="0"></div><section class="assistant-panel" aria-label="翻译与 AI 助手"><header class="assistant-header"><div class="segmented" role="tablist"><button data-assistant-tab="selection" class="active" role="tab" aria-selected="true">划词翻译</button><button data-assistant-tab="full" role="tab" aria-selected="false">全文翻译</button><button data-assistant-tab="chat" role="tab" aria-selected="false">AI 问答</button></div><button id="translation-settings" class="translation-settings" title="翻译设置" aria-label="翻译设置">${icon('settings-2')}<span>翻译设置</span>${icon('chevron-down')}</button></header><div id="assistant-content" class="assistant-content"></div></section></div><section id="library-view" class="library-view" hidden></section><nav class="mobile-nav"><button class="active" data-mobile-pane="reader">${icon('book-open')}阅读</button><button data-mobile-pane="assistant">${icon('languages')}翻译 / AI</button>${button('library', 'folder-open', '文档')}${button('settings', 'settings-2', '设置')}</nav></main><div id="color-popover" class="color-popover" hidden></div>`;
   }
   bind() {
+    window.addEventListener(
+      'pointerdown',
+      (event) => {
+        const menu = document.getElementById('color-popover');
+        if (
+          menu.hidden ||
+          menu.dataset.tool !== 'shape' ||
+          event.button !== 0 ||
+          !event.target.closest('.reader-panel') ||
+          event.target.closest('[data-action^="color-"]')
+        )
+          return;
+        menu.hidden = true;
+        this.tool = 'shape';
+        this.viewer.setTool('shape', this.colors.shape);
+        this.updateToolButtons();
+        // The pointer target was resolved before the ink layer became interactive.
+        // Forward this first press so closing the menu can also start the stroke.
+        this.viewer.beginShapeFromPointer(event);
+      },
+      true,
+    );
     document.querySelectorAll('.sidebar .nav-item').forEach((button) => {
       button.setAttribute('aria-label', button.textContent.trim());
       button.title = button.textContent.trim();
@@ -483,6 +505,7 @@ class App {
         ? ['#ffe082', '#b4e3c5', '#b7d7ff', '#dcc8ff', '#ffc4cf', '#ffd5af']
         : ['#6370ee', '#334155', '#e8ae3e', '#21a179', '#ef6380', '#9361c9'];
     const root = document.getElementById('color-popover');
+    root.dataset.tool = tool;
     const sizeKey = { note: 'noteSize', text: 'textSize', pen: 'penWidth' }[tool];
     const min = tool === 'pen' ? 0.5 : 6,
       max = tool === 'pen' ? 12 : 48;
@@ -632,21 +655,13 @@ class App {
     if (button) button.disabled = true;
     try {
       const doc = this.active;
-      const sourcePdf = this.pdf;
-      const filename = this.viewer.annotations.some((a) => !a.deleted)
-        ? doc.name.replace(/\.pdf$/i, ' · 批注.pdf')
-        : doc.name;
+      const hasAnnotations = this.viewer.annotations.some((a) => !a.deleted);
+      const filename = hasAnnotations ? doc.name.replace(/\.pdf$/i, ' · 批注.pdf') : doc.name;
       const target = await chooseSaveTarget(filename);
       if (!target) return;
-      const file = await get('files', doc.id);
-      const annotations = (await all('annotations')).filter((a) => a.documentId === doc.id && !a.deleted);
-      if (!annotations.length) {
-        await saveFile(file.blob, filename, { target });
-        return;
-      }
-      toast('正在将批注写入 PDF…');
-      const { exportAnnotatedPdf } = await import('./pdf-export.js');
-      const blob = await exportAnnotatedPdf(file.blob, annotations, sourcePdf);
+      if (hasAnnotations) toast('正在将批注写入 PDF…');
+      const { editedDocumentBlob } = await import('./document-download.js');
+      const blob = await editedDocumentBlob(doc.id);
       await saveFile(blob, filename, { target });
     } finally {
       this.savingPDF = false;
