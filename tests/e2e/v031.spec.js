@@ -16,6 +16,7 @@ async function setup(page, mobile = false) {
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 async function openMenu(page, mobileHeader = false) {
+  mobileHeader ||= await page.locator('.mobile-header').isVisible();
   await page.locator(`${mobileHeader ? '.mobile-header' : '.document-bar'} [data-action="open-pdf"]`).click();
 }
 const docs = (page) => page.evaluate(async () => (await import('/src/js/storage.js')).all('documents'));
@@ -28,7 +29,9 @@ for (const mobile of [false, true])
     await openMenu(page);
     const menu = page.getByRole('menu', { name: '打开 PDF 方式' });
     await expect(menu.getByRole('menuitem')).toHaveCount(3);
-    const anchor = await page.locator('.document-bar [data-action="open-pdf"]').boundingBox(),
+    const anchor = await page
+        .locator(`${mobile ? '.mobile-header' : '.document-bar'} [data-action="open-pdf"]`)
+        .boundingBox(),
       popup = await menu.boundingBox();
     expect(popup.y).toBeCloseTo(anchor.y + anchor.height + 6, 0);
     const choosing = page.waitForEvent('filechooser');

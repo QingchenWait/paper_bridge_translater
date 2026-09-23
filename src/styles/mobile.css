@@ -1,5 +1,8 @@
 /* Independent portrait layout. Pane switching is handled by ui/mobile.js. */
 @media (max-width: 960px) {
+  .document-bar > .open-pdf {
+    display: none;
+  }
   .open-pdf-menu button {
     min-height: 2.9rem;
   }

@@ -43,6 +43,7 @@ pdf_translater/
 │  │  ├─ utils.js                  转义、UUID、下载、哈希、格式化
 │  │  ├─ text.js                   PDF 排版清洗、单词判断、按字节切片
 │  │  ├─ translation.js            免费词典、词形补充、基础翻译入口
+│  │  ├─ dictionary-fallbacks.js   FreeDictionaryAPI / 3325 响应转为统一单词结构
 │  │  ├─ basic-translation.js      非 LLM 服务配置、签名、JSONP、分段和响应解析
 │  │  ├─ llm.js                    Chat/Responses、文件输入、SSE、原生 PDF
 │  │  ├─ markdown.js               Markdown/KaTeX/高亮/安全 HTML
@@ -84,6 +85,7 @@ pdf_translater/
 ├─ tests/
 │  ├─ core.test.mjs                数据、清洗、SSE 和存档协议测试
 │  ├─ providers.test.mjs           模板、可信官网映射、原配置保留与原生桥接测试
+│  ├─ dictionary-fallbacks.test.mjs 中文语言/子词义筛选、音标词形与错误结构测试
 │  ├─ basic-translation.test.mjs   三家签名、响应、分段/取消、凭据存档和并发保存
 │  ├─ settings-persistence.test.mjs 自动保存交错写入、完整设置备份、清空 API 防复活
 │  ├─ annotation-writes.test.mjs   原位写入顺序、事务回滚、删除保护和几何备份
@@ -102,6 +104,7 @@ pdf_translater/
 │     ├─ library.spec.js           文档库交互、共享历史、下载、切换锁和无损升级
 │     ├─ editing-settings.spec.js  编辑导出回读、选词/绘图手势、引导/API 设置回归
 │     ├─ basic-translation.spec.js 基础设置/教程/默认引擎、JSONP 和阅读区路由
+│     ├─ dictionary-fallbacks.spec.js 中文优先级、两级备选、来源字段、取消和晚到响应
 │     ├─ settings-autosave.spec.js 自动保存、即时备份、动画速度、桌面/手机启动页
 │     ├─ inline-annotations.spec.js 原位输入/宽度/工具、空对象、原生导出及紧凑控件
 │     └─ v031.spec.js              打开菜单/链接/文档树、浮栏同步、原字体重复导出
@@ -214,9 +217,17 @@ pdf_translater/
 - `splitForTranslation(text,byteLimit=450)`：按 Unicode 码点切片，以 UTF-8 字节限制请求，不破坏代理对。
 - `CLEANING_INSTRUCTIONS`：统一 LLM 排版修复和文档内指令隔离提示。
 - `onlineTranslate(text,source,target,signal,basic,style)`：按 basic.defaultProvider 委托 basicTranslate，缺省 MyMemory，保留超时/取消；lookupWord 的中文补充使用同一基础配置及通用风格。
-- `lookupWord(word,signal,onUpdate,basic)`：Free Dictionary/Wiktionary REST 英文定义并行竞速，中文与词形独立并行；增量回调显示先到结果，单源超时不阻断其他来源。仅中文可用时说明缺少详细词典，不查询 LLM。
+- `lookupWord(word,signal,onUpdate,basic)`：Free Dictionary/Wiktionary REST 英文定义并行竞速，中文与词形独立并行；增量回调显示先到结果，单源超时不阻断其他来源。中文先用既有基础服务，无汉字或请求失败时按 FreeDictionaryAPI.com→3325 顺序查询；成功后停止后续查询，取消时不继续下一家、不发布旧更新。仅中文可用时说明缺少详细词典，不查询 LLM。
+- `updateDetails`（lookupWord 内部）：主要定义优先，其次采用备选定义；缺少的音标和额外词形从备选补齐，较晚主结果不清除已获得的补充。返回结构仍为 word/entries/chinese/forms/source/warning，chineseSource 为真实中文来源，新增临时 credits 保存备选署名/原词条/许可证；划词状态不持久化。
 - `dictionaryJson(url,signal)` / `plainText(html)`（内部）：6.5 秒独立词典超时，提取词条 HTML 的纯文字。
 - `LANGUAGES`：中简/中繁/英/日/韩/法/德/西的展示和 API 代码映射。
+
+### dictionary-fallbacks.js
+
+- `hasChinese(value)`：字符串含 Unicode Han 字符才视为有中文，空值、英文原词或拼音会触发备选。
+- `freeDictionaryResult(json,word)`：只取 language.code=en 词条，递归展开 senses/subsenses；将 zh/zho/cmn 及子标签的 translations.word 去重为中文释义。pronunciations→phonetics、partOfSpeech/senses→meanings、examples→example、条目/词义 synonyms 合并、forms.word/tags→词形，保留 source.url/license 和 FreeDictionaryAPI.com 署名。
+- `dictionary3325Result(json,word)`：校验 code=200、data 存在；british/american→phonetics，cx→partOfSpeech，jbjs→definition/chinese，url→来源；缺省空 synonyms/forms/audio，不额外请求无关接口。
+- `text/list/unique/sensesOf`（内部）：纯数据类型检查、去重与子词义展开，无 DOM、持久化或网络副作用。
 
 ### llm.js
 
@@ -446,6 +457,8 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 
 `data-pdf-nav` 存在时，桌面仍收窄功能侧栏并插入导航列；窄屏使用绝对定位浮窗，不显示左功能栏，不改变 PDF 宽度或 fit 比例。桌面查找列稍宽以容纳同一行筛选开关。
 
+≤960px 的 `.mobile-header` 显示“纸间 · 文献翻译”及原打开菜单按钮；`.document-bar > .open-pdf` 在 mobile.css 中隐藏。桌面仍显示文件卡片行右侧入口、隐藏 mobile-header，desktop.css 不受这次修订影响。
+
 ## DOM 页面功能映射
 
 | DOM / 标识 | 用户功能 | 处理模块 |
@@ -473,6 +486,7 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 | [data-assistant-tab] | 划词 / 全文 / AI 问答切换 | Assistant |
 | #translation-settings | 翻译引擎和风格设置浮层 | Assistant.settings |
 | #selection-result | 在线词典或句子结果，不持久化 | Assistant.renderSelection |
+| .dictionary-credit | 主要词典与实际中文来源、备选署名/词条/许可证链接；dictionaryLink 仅允许无凭据 HTTPS | Assistant.renderSelection / dictionaryLink |
 | #full-stage / #full-result | 全文状态和完整 Markdown 结果 | Assistant.startFull |
 | #full-controls / .full-summary / .full-toggle | 参数折叠动画、吸顶进度栏、停止与展开/收起按钮 | Assistant.setFullCollapsed |
 | [data-select=translation-history] | 当前 PDF 的旧译文选择 | Assistant.renderFull |

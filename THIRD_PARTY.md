@@ -33,6 +33,8 @@
 ## API 官方参考
 
 - [Free Dictionary API](https://dictionaryapi.dev/)：英文词典。词条显示接口返回的许可证信息。
+- [FreeDictionaryAPI.com](https://freedictionaryapi.com/) / [官方 OpenAPI](https://freedictionaryapi.com/api/v1/openapi.json)：中文释义第一备选，与 dictionaryapi.dev 是不同服务。GET entries/en/{word}?translations=true，解析词义/子词义的中文翻译及音标、词性、例句、近义词和词形；Wiktionary 数据按返回的 CC BY-SA 4.0 署名，在结果中展示服务名、原始词条和许可证链接。官方当前标注每 IP 每小时 1000 次，无 Key、支持 CORS。
+- [3325 词典官方文档](https://3325.cn/api-docs)：中文释义第二备选。GET /api/word/{word}，code/data 外层、british/american/cx/jbjs/url 字段；当前每 IP 每分钟 60 次，429 表示限流，CORS 允许直接浏览器调用。保留词条来源链接，不擅自宣称其数据采用开放许可证。
 - [PDF.js PDFDocumentProxy](https://mozilla.github.io/pdf.js/api/draft/module-pdfjsLib-PDFDocumentProxy.html)：缩略图使用 getPage/render；内置书签使用 getOutline/getDestination/getPageIndex。结合已安装 6.3.289 的类型定义验证。
 - [Wiktionary REST 定义接口](https://en.wiktionary.org/api/rest_v1/#/Page_content/get_page_definition__term_)：0.1.1 新增并行备用词典，通过 `/page/definition/{word}` 读取英文定义，只显示纯文本与来源；不依赖私有代理。
 - [MyMemory API](https://mymemory.translated.net/doc/spec.php)：`get?q=...&langpair=en|zh-CN`，每段控制为 450 UTF-8 字节。此文档在执行环境返回过 403，真实 API 已完成无凭据请求验证。

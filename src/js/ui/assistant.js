@@ -19,6 +19,16 @@ import {
   toast,
   inputDialog,
 } from './components.js';
+function dictionaryLink(label, value) {
+  try {
+    const url = new URL(value);
+    if (url.protocol === 'https:' && !url.username && !url.password)
+      return `<a href="${esc(url.href)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`;
+  } catch {
+    /* An invalid source URL is displayed as text only. */
+  }
+  return esc(label);
+}
 export class Assistant {
   constructor(app) {
     this.app = app;
@@ -52,14 +62,31 @@ export class Assistant {
   renderSelection() {
     const entry = this.selections.get(this.app.activeId);
     if (!entry) {
-      this.root.innerHTML = `<div class="assistant-empty"><div class="empty-orbit"><img src="${illustration('sparkles')}" alt=""></div><span class="eyebrow">A LITTLE HELP, A LOT OF CLARITY</span><h2>让每一次阅读<br>都更进一步。</h2><p>在左侧选中一个单词、一句话，<br>译文与释义会出现在这里。</p><div class="empty-tip">${icon('languages')}单词查词典 · 句子即刻翻译</div></div><div class="assistant-bottom-note">${icon('shield-check')}划词结果仅在本次阅读中保留</div>`;
+      this.root.innerHTML = `<div class="assistant-empty"><div class="empty-orbit"><img src="${illustration('sparkles')}" alt=""></div><span class="eyebrow">A LITTLE HELP, A LOT OF CLARITY</span><h2>PDF 中选中词句，实时转译</h2><p>支持 LLM 翻译 & 传统快速翻译<br>内置翻译<b>额度有限</b>，可前往设置申请+配置新 API</p><div class="empty-tip">${icon('languages')}单词查词典 · 句子即刻翻译</div></div><div class="assistant-bottom-note">${icon('shield-check')}划词结果仅在本次阅读中保留</div>`;
       return;
     }
     this.root.innerHTML = `<div class="selection-content"><section class="translation-section"><header><h3>原文 <span class="section-tag">${isSingleWord(entry.original) ? 'WORD' : 'SOURCE'}</span></h3><div>${iconButton('speak-source', 'volume-2', '朗读原文')}${iconButton('copy-source', 'copy', '复制原文')}</div></header><p class="source-text">${esc(entry.original)}</p></section><section class="translation-section"><header><h3>${entry.dictionary ? '词典释义' : '翻译结果'} <span class="section-tag">${esc(entry.engine || '')}</span></h3><div>${iconButton('speak-result', 'volume-2', '朗读译文')}${iconButton('copy-result', 'copy', '复制译文')}</div></header><div id="selection-result" class="markdown"></div>${entry.loading ? '<div class="inline-loading"><span class="spinner small"></span>正在理解这段文字…</div>' : ''}${entry.error ? `<div class="error-card">${icon('circle-alert')}<span>${esc(entry.error)}</span></div>${button('retry-selection', 'refresh-cw', '重试')}` : ''}</section><div class="translation-footnote">${icon('check')}自动整理 PDF 断词与换行</div></div>`;
     const target = this.root.querySelector('#selection-result');
     if (entry.dictionary) {
-      const { entries, chinese, forms, source, warning, chineseSource } = entry.dictionary;
+      const { entries, chinese, forms, source, warning, chineseSource, credits = [] } = entry.dictionary;
       const first = entries[0];
+      const credited = new Set(credits.map((credit) => credit.name));
+      const chineseLabel =
+        BASIC_APIS.find((p) => p.id === chineseSource)?.name ||
+        { google: 'Google 翻译', mymemory: 'MyMemory' }[chineseSource] ||
+        chineseSource;
+      const attribution = [
+        !credited.has(source) && esc(source || '在线词典'),
+        !credited.has(source) && first.license?.name && esc(first.license.name),
+        chinese && !credited.has(chineseSource) && esc(chineseLabel || ''),
+        ...credits.flatMap((credit) => [
+          dictionaryLink(credit.name, credit.url),
+          dictionaryLink('词条来源', credit.sourceUrl),
+          credit.license?.name && dictionaryLink(credit.license.name, credit.license.url),
+        ]),
+      ]
+        .filter(Boolean)
+        .join(' · ');
       target.innerHTML = `<div class="dictionary-heading"><strong>${esc(first.word)}</strong><span>${esc(first.phonetic || first.phonetics?.find((p) => p.text)?.text || '')}</span>${iconButton('word-audio', 'volume-2', '播放词典发音')}</div>${chinese ? `<p class="chinese-meaning">${esc(chinese)}</p>` : '<p class="note">中文释义暂不可用，下面为词典原文释义。</p>'}${entries
         .flatMap((e) => e.meanings)
         .map(
@@ -68,7 +95,7 @@ export class Assistant {
         )
         .join(
           '',
-        )}${forms?.length ? `<p class="note"><b>词形变化</b><br>${forms.map(esc).join('<br>')}</p>` : '<p class="note">此词条暂无可用的词形变化数据。</p>'}${warning ? `<p class="note">${esc(warning)}</p>` : ''}<p class="dictionary-credit">${esc(source || '在线词典')} · ${esc(first.license?.name || '')} · ${esc(BASIC_APIS.find((p) => p.id === chineseSource)?.name || (chineseSource === 'google' ? 'Google 翻译' : 'MyMemory'))} · <a href="https://en.wiktionary.org/wiki/${encodeURIComponent(first.word)}" target="_blank" rel="noopener noreferrer">Wiktionary 词形</a></p>`;
+        )}${forms?.length ? `<p class="note"><b>词形变化</b><br>${forms.map(esc).join('<br>')}</p>` : '<p class="note">此词条暂无可用的词形变化数据。</p>'}${warning ? `<p class="note">${esc(warning)}</p>` : ''}<p class="dictionary-credit">${attribution} · <a href="https://en.wiktionary.org/wiki/${encodeURIComponent(first.word)}" target="_blank" rel="noopener noreferrer">Wiktionary 词形</a></p>`;
       this.root.querySelector('[data-action="word-audio"]').onclick = () => {
         const url = entries.flatMap((e) => e.phonetics || []).find((p) => /^https:\/\//.test(p.audio))?.audio;
         if (url) new Audio(url).play().catch(() => this.speak(entry.original, 'en'));
@@ -237,7 +264,7 @@ export class Assistant {
     const latest = job?.record || records[0];
     const panel = this.fullPanels.get(doc.id) || { collapsed: false, autoCollapsed: false };
     this.fullPanels.set(doc.id, panel);
-    this.root.innerHTML = `<div class="full-content"><div class="full-summary" ${panel.autoCollapsed ? '' : 'hidden'}><span class="full-summary-progress ${job ? 'working' : ''}" role="${job ? 'progressbar' : 'status'}" aria-label="全文翻译进度"></span><span data-full-stage>${esc(job?.stage || (latest?.status === 'complete' ? '翻译完成' : '部分结果已保存'))}</span>${job ? iconButton('cancel-full-summary', 'stop-circle', '停止全文翻译') : ''}<button class="icon-button full-toggle" data-action="toggle-full-controls" aria-expanded="${!panel.collapsed}" aria-controls="full-controls" title="${panel.collapsed ? '展开翻译设置' : '收起翻译设置'}" aria-label="${panel.collapsed ? '展开翻译设置' : '收起翻译设置'}">${icon('chevron-down')}</button></div><div id="full-controls" class="full-controls ${panel.collapsed ? 'is-collapsed' : ''}"><div class="full-controls-inner"><div class="panel-heading"><div class="panel-symbol">${icon('languages')}</div><h2>跨越整篇文章的语言边界</h2><p>保留章节结构、公式与表格，专注内容本身。</p></div><div class="full-options"><div class="field"><span>目标语言</span>${select('full-language', LANGUAGES, settings.targetLanguage, '全文目标语言')}</div><div class="field"><span>使用的 API</span>${select(
+    this.root.innerHTML = `<div class="full-content"><div class="full-summary" ${panel.autoCollapsed ? '' : 'hidden'}><span class="full-summary-progress ${job ? 'working' : ''}" role="${job ? 'progressbar' : 'status'}" aria-label="全文翻译进度"></span><span data-full-stage>${esc(job?.stage || (latest?.status === 'complete' ? '翻译完成' : '部分结果已保存'))}</span>${job ? iconButton('cancel-full-summary', 'stop-circle', '停止全文翻译') : ''}<button class="icon-button full-toggle" data-action="toggle-full-controls" aria-expanded="${!panel.collapsed}" aria-controls="full-controls" title="${panel.collapsed ? '展开翻译设置' : '收起翻译设置'}" aria-label="${panel.collapsed ? '展开翻译设置' : '收起翻译设置'}">${icon('chevron-down')}</button></div><div id="full-controls" class="full-controls ${panel.collapsed ? 'is-collapsed' : ''}"><div class="full-controls-inner"><div class="panel-heading"><div class="panel-symbol">${icon('languages')}</div><h2>LLM 驱动，一键全文翻译</h2><p>保留章节结构、公式与表格，可读性 MAX</p></div><div class="full-options"><div class="field"><span>目标语言</span>${select('full-language', LANGUAGES, settings.targetLanguage, '全文目标语言')}</div><div class="field"><span>使用的 API</span>${select(
       'full-provider',
       settings.chatProviders.map((p) => [p.id, `${p.name} · ${p.model}`]),
       settings.defaultChatProviderId,

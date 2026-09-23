@@ -1,5 +1,19 @@
 # 开发记录
 
+## v0.3.1 同版本修订 · 中文词典备选与窄屏入口 · 2026-09-23
+
+范围仅为单词词典备选及移动端/窄屏打开按钮、顶栏名称。版本保持 0.3.1，运行依赖、存档及数据库结构均不变。
+
+- 对照用户指定官方站点及 FreeDictionaryAPI OpenAPI，新增 `dictionary-fallbacks.js` 纯转换模块。FreeDictionaryAPI 使用 `/api/v1/entries/en/{word}?translations=true`；按 zh/zho/cmn 语言代码从 senses/subsenses 中取中文，排除其他语言和纯拼音，去重后适配 entries/phonetics/meanings/forms。3325 使用 `/api/word/{word}`，只接受 code=200，映射 british/american、cx、jbjs；不虚构接口未返回的词形或音频。
+- `translation.js` 保留主要英文词典的并行竞速与现有基础服务优先级。中文成功后不请求新增备选；缺少中文时按 FreeDictionaryAPI→3325 串行查询，各沿用 6.5 秒词典超时。请求失败、429、未收录或无中文继续下一家；用户取消则停止链路并禁止旧回调更新。主要英文定义优先，补充音标和词形不被较晚的主请求/空词形覆盖；只有中文也可展示，不调用 LLM。
+- `ui/assistant.js` 仅在词典区补充真实来源署名、词条/许可证 HTTPS 链接，并按实际中文来源标记；不再把备选结果标成 MyMemory。所有词典文本经过已有转义，非法来源 URL 只显示文字。
+- `main.js` 只改独立 mobile-header 的标题；`mobile.css` 仅在 ≤960px 隐藏文件卡片行右侧的 .open-pdf，保留顶部按钮的三项菜单。没有更改 desktop.css 或桌面品牌与入口。
+- 增加转换单元测试和查询顺序、原词典成功不回退、无中文/限流回退、来源字段、晚到结果及取消回归；原打开菜单测试在窄屏改用顶部保留的入口。继续复用已下载图标，不新增美术或运行依赖。
+
+真实浏览器从本地页面直接调用两家公开词条均返回 200，获得中文释义并成功转换；FreeDictionaryAPI 按 Origin 返回允许来源，3325 返回 `Access-Control-Allow-Origin: *`。使用公开 attention 单词验证，未访问用户文档/密钥；网络和服务额度仍由各站点决定。390px 窄屏实测无横向溢出、标题正确、卡片行按钮隐藏，1920px 桌面按钮显示且 mobile-header 隐藏，截图已检查。
+
+验证全部通过：`npm run check`、62 项单元测试、完整 73 项浏览器回归、`npm run build`、`npm run test:dist`。浏览器回归使用独立 5193 端口，原有 5173 服务保留；静态子路径验证覆盖 PDF 导入、中文编辑导出、持久化恢复和高亮。dist 为 278 个文件、约 16.4 MiB；保留原有 Vite 主块体积提示。本轮四份开发文档及 THIRD_PARTY.md 已同步，包与界面版本均保持 0.3.1。
+
 ## v0.3.1 · 2026-09-23
 
 本轮只修改打开 PDF 入口、标准标记/笔迹导出、Noto 字体子集、批注浮栏及标签标题。运行依赖、IndexedDB 版本 2、存档版本 2 不变；用户已有文档和设置不迁移、不清空。
