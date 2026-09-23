@@ -15,6 +15,7 @@
 | [Noto CJK](https://github.com/notofonts/noto-cjk) | `public/fonts/NotoSansSC-Regular.otf`，按需加载的批注中文字体 | SIL OFL 1.1；见 `public/fonts/LICENSE` |
 | markdown-it、markdown-it-texmath、KaTeX、highlight.js | Markdown、数学与代码渲染 | 各包许可证见 node_modules；构建固定依赖版本 |
 | DOMPurify | HTML 净化 | Apache-2.0 OR MPL-2.0 |
+| [@noble/hashes](https://github.com/paulmillr/noble-hashes) 2.4.0 | 百度官方接口要求的 MD5 签名，按需加载 legacy.js；SHA/HMAC 使用浏览器 Web Crypto | MIT；分发包保留 NOBLE-HASHES.txt |
 | idb、fflate、html2canvas、fontkit | 存储、存档、视觉 PDF、字体子集 | 各包原许可证保留于依赖目录 |
 
 素材下载脚本为 `tools/download-assets.ps1`。源图标并未重绘；CSS 只调整显示尺寸、颜色滤镜和透明度。UI 参考图和规则来自用户提供的 `src/ui_rules`。
@@ -31,4 +32,9 @@
 
 - [Tauri opener 官方源码](https://github.com/tauri-apps/plugins-workspace/blob/v2/plugins/opener/guest-js/index.ts)：核对 openUrl → plugin:opener|open_url 默认系统浏览器调用；实现按需调用已有宿主桥接，不引入原生打包依赖。
 
-外部接口文档在开发时核对；最终运行不加载 CDN 代码。只有用户发起在线翻译、问答或云同步时访问对应外部服务。
+- [Google 接口参考（用户指定）](https://juejin.cn/post/7384632027230519330)：仅采用“翻译 API 信息”章节的 client=gtx/dt=t 参数思路，不引入文章中的代理；已直接请求 Google 官方域名验证返回与 CORS。
+- [阿里云 TranslateGeneral](https://help.aliyun.com/zh/machine-translation/developer-reference/api-alimt-2018-10-12-translategeneral) 与 [官方 RPC 签名器](https://github.com/aliyun/aliyun-openapi-python-sdk/blob/master/aliyun-python-sdk-core/aliyunsdkcore/auth/composer/rpc_signature_composer.py)：通用版参数、返回结构、HMAC-SHA1 签名。
+- [百度领域翻译](https://fanyi-api.baidu.com/product/123) / [百度通用翻译](https://fanyi-api.baidu.com/product/113)：academic 中英领域、MD5 拼接顺序、语言映射；直接请求验证两个官方端点的 JSONP 回调。
+- [火山文本翻译](https://docs.volcengine.com/docs/MachineTranslation/TextTranslationAPI) / [官方签名器](https://github.com/volcengine/volc-sdk-python/blob/master/volcengine/auth/SignerV4.py)：POST TextList、TranslationList，地域 cn-north-1、服务 translate 及 HMAC-SHA256 V4 签名。
+
+外部接口文档在开发时核对；依赖和图标均本地打包；百度翻译请求会加载其官方 API 的 JSONP 数据回调脚本。只有用户发起在线翻译、问答或云同步时访问对应外部服务。

@@ -1321,6 +1321,121 @@ img {
   object-fit: contain;
   filter: none;
 }
+.basic-providers {
+  display: grid;
+  gap: 0.75rem;
+}
+.basic-provider {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: #fafaff;
+  overflow: hidden;
+}
+.basic-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.9rem 1rem;
+  text-align: left;
+}
+.basic-summary:hover {
+  background: #f2f0fc;
+}
+.basic-summary > .icon {
+  width: 1rem;
+  transition: transform 0.2s;
+}
+.basic-summary[aria-expanded='true'] > .icon {
+  transform: rotate(180deg);
+}
+.basic-provider-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.basic-provider-title small {
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+.basic-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: none;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+.basic-status i {
+  width: 0.45rem;
+  height: 0.45rem;
+  background: #bbc0cc;
+  border-radius: 50%;
+}
+.basic-status.connected {
+  color: #24865e;
+}
+.basic-status.connected i {
+  background: #2fa779;
+}
+.basic-status.failed {
+  color: #c04c5b;
+}
+.basic-status.failed i {
+  background: #d7707e;
+}
+.basic-provider-body {
+  padding: 0.25rem 1rem 1rem;
+  background: white;
+}
+.basic-provider-body h4 {
+  font-size: 0.85rem;
+  line-height: 1.65;
+  margin: 0.5rem 0;
+}
+.basic-tutorial {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  line-height: 1.8;
+}
+.basic-tutorial ol {
+  padding-left: 1.4rem;
+}
+.basic-tutorial li + li {
+  margin-top: 0.4rem;
+}
+.basic-tutorial a {
+  overflow-wrap: anywhere;
+}
+.basic-tutorial a .icon {
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-left: 0.2rem;
+}
+.basic-provider-body .field {
+  margin-top: 0.85rem;
+}
+.basic-test-detail {
+  overflow-wrap: anywhere;
+}
+.basic-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.basic-actions .button {
+  font-size: 0.78rem;
+}
+.basic-quota-note {
+  margin-top: 1rem;
+}
 .onboarding-preference {
   margin-top: 1rem;
 }

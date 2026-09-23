@@ -9,3 +9,4 @@ await cp('node_modules/pdfjs-dist/LICENSE', 'public/licenses/PDFJS-APACHE-2.0.tx
 await cp('src/_logo/LUCIDE-LICENSE', 'public/licenses/LUCIDE.txt');
 await cp('src/_logo/FLUENT-LICENSE', 'public/licenses/FLUENT-EMOJI.txt');
 await cp('src/_logo/LOBE-ICONS-LICENSE', 'public/licenses/LOBE-ICONS.txt');
+await cp('node_modules/@noble/hashes/LICENSE', 'public/licenses/NOBLE-HASHES.txt');

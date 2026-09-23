@@ -1,4 +1,4 @@
-import { cleanPdfText, splitForTranslation } from './text.js';
+import { basicTranslate } from './basic-translation.js';
 export const LANGUAGES = [
   ['zh-CN', '简体中文'],
   ['zh-TW', '繁體中文'],
@@ -9,22 +9,23 @@ export const LANGUAGES = [
   ['de', 'Deutsch'],
   ['es', 'Español'],
 ];
-export async function onlineTranslate(text, source = 'en', target = 'zh-CN', signal) {
-  if (source === target) return cleanPdfText(text);
-  const output = [];
-  for (const chunk of splitForTranslation(cleanPdfText(text))) {
-    const url = new URL('https://api.mymemory.translated.net/get');
-    url.search = new URLSearchParams({ q: chunk, langpair: `${source}|${target}` });
-    const response = await fetch(url, {
-      signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(18000)]),
-    });
-    if (!response.ok) throw new Error(`在线翻译服务暂不可用 (${response.status})`);
-    const json = await response.json();
-    if (Number(json.responseStatus) !== 200 || json.quotaFinished)
-      throw new Error(json.responseDetails || '免费翻译额度已用完，请稍后重试或切换 LLM');
-    output.push(json.responseData.translatedText);
-  }
-  return output.join('');
+export async function onlineTranslate(
+  text,
+  source = 'en',
+  target = 'zh-CN',
+  signal,
+  basic,
+  style = '学术论文',
+) {
+  const provider = basic?.defaultProvider || 'mymemory';
+  return basicTranslate(text, {
+    provider,
+    config: basic?.providers?.[provider],
+    source,
+    target,
+    signal,
+    style,
+  });
 }
 const plainText = (html) => new DOMParser().parseFromString(html || '', 'text/html').body.textContent.trim();
 async function dictionaryJson(url, signal) {
@@ -34,7 +35,7 @@ async function dictionaryJson(url, signal) {
   if (!response.ok) throw new Error(`词典请求失败 (${response.status})`);
   return response.json();
 }
-export async function lookupWord(word, signal, onUpdate = () => {}) {
+export async function lookupWord(word, signal, onUpdate = () => {}, basic) {
   const state = {
     word,
     entries: [{ word, phonetics: [], meanings: [] }],
@@ -80,7 +81,8 @@ export async function lookupWord(word, signal, onUpdate = () => {}) {
     Object.assign(state, result);
     publish();
   });
-  const chinese = onlineTranslate(word, 'en', 'zh-CN', signal).then((value) => {
+  state.chineseSource = basic?.defaultProvider || 'mymemory';
+  const chinese = onlineTranslate(word, 'en', 'zh-CN', signal, basic, '忠实直译').then((value) => {
     state.chinese = value;
     publish();
   });

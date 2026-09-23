@@ -330,7 +330,7 @@ for (const mobile of [false, true])
       ['OpenAI', 'https://api.openai.com/v1', 'gpt-5.6-luna'],
       ['GLM', 'https://open.bigmodel.cn/api/paas/v4', 'glm-5.3-flash'],
       ['Kimi', 'https://api.moonshot.cn/v1', 'kimi-k3'],
-      ['LM Studio', 'https://localhost:1234/v1', ''],
+      ['LM Studio', 'http://localhost:1234/v1', ''],
       ['自定义', '', ''],
     ];
     for (const [name, baseUrl, model] of presets) {
@@ -380,6 +380,7 @@ for (const mobile of [false, true])
       .evaluate((el) => el.scrollWidth > el.clientWidth || el.getBoundingClientRect().right > innerWidth);
     expect(overflow).toBe(false);
     await page.getByRole('button', { name: '保存设置', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.reload();
     expect(
       await page.evaluate(

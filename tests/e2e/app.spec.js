@@ -34,10 +34,12 @@ async function setup(page) {
   await page.goto('/');
   await page.getByRole('checkbox', { name: '不再显示', exact: true }).check();
   await page.getByRole('button', { name: '先使用在线翻译' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 async function importPdf(page, name) {
   await page.locator('#pdf-input').setInputFiles(await fixture(name));
   await expect(page.locator('.pdf-page[data-page="1"] .textLayer span').first()).toBeVisible();
+  await expect(page.locator('#document-tabs')).toHaveAttribute('aria-busy', 'false');
 }
 async function selectText(page, text) {
   await expect(
@@ -48,6 +50,8 @@ async function selectText(page, text) {
       s.textContent.includes(value),
     );
     if (!span) throw new Error('Missing PDF text ' + value);
+    document.activeElement?.blur();
+    span.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0 }));
     const range = document.createRange();
     const start = span.textContent.indexOf(value);
     range.setStart(span.firstChild, start);
@@ -374,9 +378,10 @@ test('encrypted archive restores documents, annotations and full conversations i
   });
   const context = await browser.newContext();
   const other = await context.newPage();
-  await other.goto('http://127.0.0.1:');
+  await other.goto(new URL(page.url()).origin);
   await other.getByRole('checkbox', { name: '不再显示', exact: true }).check();
   await other.getByRole('button', { name: '先使用在线翻译' }).click();
+  await expect(other.getByRole('dialog')).toHaveCount(0);
   const restored = await other.evaluate(async (data) => {
     const { importArchive } = await import('/src/js/archive.js');
     const { all } = await import('/src/js/storage.js');
@@ -410,10 +415,13 @@ test('selection-first actions toggle independently and remove only the selected 
   await selectText(page, 'parallel computation');
   await highlight.click();
   await expect(highlight).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.mark-highlight')).toHaveCount(1);
   await selectText(page, 'parallel computation');
   await expect(highlight).toHaveAttribute('aria-pressed', 'true');
   await underline.click();
   await expect(underline).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.mark-underline')).toHaveCount(1);
+  const wholeUnderlineWidth = (await page.locator('.mark-underline').boundingBox()).width;
   await selectText(page, 'parallel computation');
   await expect(highlight).toHaveAttribute('aria-pressed', 'true');
   await expect(underline).toHaveAttribute('aria-pressed', 'true');
@@ -421,6 +429,7 @@ test('selection-first actions toggle independently and remove only the selected 
   await page.locator('#input-form textarea').fill('绑定文本的批注');
   await page.locator('#input-form button[type=submit]').click();
   await expect(note).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.annotation-note')).toHaveCount(1);
   await selectText(page, 'parallel computation');
   await expect(note).toHaveAttribute('aria-pressed', 'true');
   await expect(highlight).toHaveAttribute('aria-pressed', 'true');
@@ -435,11 +444,19 @@ test('selection-first actions toggle independently and remove only the selected 
   await selectText(page, 'computation');
   await underline.click();
   await expect(page.locator('.mark-underline')).toHaveCount(1);
+  await expect
+    .poll(async () => (await page.locator('.mark-underline').boundingBox()).width)
+    .toBeLessThan(wholeUnderlineWidth);
   await selectText(page, 'computation');
   await expect(underline).toHaveAttribute('aria-pressed', 'false');
   await selectText(page, 'parallel');
   await expect(underline).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: '撤销批注 (Ctrl+Z)', exact: true }).click();
+  await expect
+    .poll(async () =>
+      Math.abs((await page.locator('.mark-underline').boundingBox()).width - wholeUnderlineWidth),
+    )
+    .toBeLessThan(0.1);
   await page.reload();
   await expect(page.locator('.pdf-page[data-page="1"] .textLayer span').first()).toBeVisible();
   await selectText(page, 'computation');
@@ -575,9 +592,10 @@ test('translation popover anchors below its button and uses the selected API', a
   const popup = await page.locator('.translation-popover').boundingBox();
   expect(popup.width).toBeLessThanOrEqual(360);
   await page.getByRole('button', { name: '翻译引擎', exact: true }).click();
-  await expect(page.getByRole('option')).toHaveCount(3);
+  await expect(page.getByRole('option')).toHaveCount(4);
   await page.getByRole('option', { name: 'Second API · second-model', exact: true }).click();
   await page.locator('[data-action="save-translation"]').click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await selectText(page, 'parallel computation');
   await expect(page.locator('#selection-result')).toContainText('第二个 API');
   expect(used).toBe('second-model');
@@ -649,7 +667,9 @@ test('mobile selection remains available for annotations and compact translation
     'aria-pressed',
     'false',
   );
-  expect((await page.locator('.document-tab').boundingBox()).height).toBeGreaterThanOrEqual(44);
+  await expect
+    .poll(async () => (await page.locator('.document-tab').boundingBox())?.height || 0)
+    .toBeGreaterThanOrEqual(44);
   await page.locator('[data-mobile-pane="assistant"]').click();
   await expect(page.locator('#selection-result')).toContainText('手机端译文');
   await page.getByRole('button', { name: '翻译设置', exact: true }).click();

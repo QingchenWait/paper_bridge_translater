@@ -1,5 +1,6 @@
 import { openDB } from 'idb';
 import { uid } from './utils.js';
+import { mergeBasicTranslation } from './basic-translation.js';
 export const STORES = [
   'documents',
   'files',
@@ -160,6 +161,10 @@ export async function mergeSnapshot(incoming, { restoreSettings = false, restore
                 ...old.value,
                 ...row.value,
                 chatProviders: [...providers.values()],
+                basicTranslation: mergeBasicTranslation(
+                  old.value?.basicTranslation,
+                  row.value?.basicTranslation,
+                ),
                 webdav: {
                   ...old.value?.webdav,
                   ...row.value?.webdav,

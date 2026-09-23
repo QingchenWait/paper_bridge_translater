@@ -318,7 +318,10 @@ test('touch dragging moves notes, textboxes and shapes without opening edit dial
     await expect(page.getByRole('dialog')).toHaveCount(0);
   }
 });
-test('embedded Chinese fonts and high-DPI text layers use the same glyph advances', async ({ browser }) => {
+test('embedded Chinese fonts and high-DPI text layers use the same glyph advances', async ({
+  browser,
+  baseURL,
+}) => {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   const font = await pdf.embedFont(await readFile('public/fonts/NotoSansSC-Regular.otf'), { subset: true });
@@ -328,7 +331,7 @@ test('embedded Chinese fonts and high-DPI text layers use the same glyph advance
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
   const page = await context.newPage();
   try {
-    await page.goto('http://127.0.0.1:5173');
+    await page.goto(baseURL);
     await page.getByRole('checkbox', { name: '不再显示', exact: true }).check();
     await page.getByRole('button', { name: '先使用在线翻译' }).click();
     await page.locator('#pdf-input').setInputFiles({

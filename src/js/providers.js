@@ -44,7 +44,7 @@ export const PROVIDERS = [
     model: 'kimi-k3',
     keyUrl: 'https://platform.kimi.com/console/api-keys',
   },
-  { id: 'lmstudio', name: 'LM Studio', baseUrl: 'https://localhost:1234/v1', model: '' },
+  { id: 'lmstudio', name: 'LM Studio', baseUrl: 'http://localhost:1234/v1', model: '' },
   { id: 'custom', name: '自定义', baseUrl: '', model: '' },
 ].map((preset) => ({ protocol: 'chat', pdfInput: false, pdfOutput: false, ...preset }));
 
@@ -64,6 +64,12 @@ export function providerKeyUrl(baseUrl) {
 export async function openProviderWebsite(baseUrl) {
   const url = providerKeyUrl(baseUrl);
   if (!url) return;
+  return openExternalWebsite(url);
+}
+export async function openExternalWebsite(value) {
+  const parsed = new URL(value);
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password) throw new Error('无效的官网地址');
+  const url = parsed.href;
   if (window.__TAURI__?.opener?.openUrl) await window.__TAURI__.opener.openUrl(url);
   else if (window.__TAURI_INTERNALS__?.invoke)
     await window.__TAURI_INTERNALS__.invoke('plugin:opener|open_url', { url });

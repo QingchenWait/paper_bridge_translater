@@ -30,6 +30,13 @@ export async function createArchive({ includeSecrets = true, password = '' } = {
       const value = structuredClone(row.value);
       value.apiKey = '';
       value.chatProviders = (value.chatProviders || []).map((p) => ({ ...p, apiKey: '' }));
+      if (value.basicTranslation?.providers)
+        value.basicTranslation.providers = Object.fromEntries(
+          Object.entries(value.basicTranslation.providers).map(([id, config]) => [
+            id,
+            { ...config, keyId: '', secret: '', connection: null },
+          ]),
+        );
       if (value.webdav) value.webdav = { ...value.webdav, password: '', username: '', enabled: false };
       return { ...row, value };
     });

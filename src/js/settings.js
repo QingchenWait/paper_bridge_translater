@@ -1,5 +1,6 @@
 // Adapted from 海姆休息室 src/js/settings.js (GPL-3.0); field meanings remain compatible.
 import { get, put } from './storage.js';
+import { normalizeBasicTranslation } from './basic-translation.js';
 export { PROVIDERS } from './providers.js';
 export function normalizeSettings(raw = {}) {
   const source = raw.chatProviders?.length
@@ -40,6 +41,7 @@ export function normalizeSettings(raw = {}) {
     targetLanguage: raw.targetLanguage || 'zh-CN',
     sourceLanguage: raw.sourceLanguage || 'en',
     translationEngine: raw.translationEngine || 'online',
+    basicTranslation: normalizeBasicTranslation(raw.basicTranslation),
     translationProviderId: raw.translationProviderId || selected?.id || '',
     translationStyle: raw.translationStyle || '学术论文',
     onboardingDone: raw.onboardingDone === true,
@@ -69,6 +71,20 @@ export async function saveSettings(next) {
   settings = normalized;
   document.dispatchEvent(new CustomEvent('settings-changed', { detail: normalized }));
   return normalized;
+}
+let basicSave = Promise.resolve();
+export function saveBasicTranslation(update, preferences = {}) {
+  const pending = basicSave
+    .catch(() => {})
+    .then(async () => {
+      const current = await getSettings();
+      return saveSettings({
+        ...preferences,
+        basicTranslation: update(structuredClone(current.basicTranslation)),
+      });
+    });
+  basicSave = pending;
+  return pending;
 }
 export function getProvider(settings, id = settings.defaultChatProviderId) {
   const provider = settings.chatProviders.find((p) => p.id === id);

@@ -1,8 +1,9 @@
 import { all, get, put, patch, contextDocument } from '../storage.js';
-import { getSettings, saveSettings, getProvider } from '../settings.js';
+import { getSettings, saveBasicTranslation, getProvider } from '../settings.js';
 import { requestLlm } from '../llm.js';
 import { cleanPdfText, isSingleWord, CLEANING_INSTRUCTIONS } from '../text.js';
 import { lookupWord, onlineTranslate, LANGUAGES } from '../translation.js';
+import { BASIC_APIS, basicOptions } from '../basic-translation.js';
 import { mountMarkdown } from '../markdown.js';
 import { uid, esc, dateLabel, errorMessage, chooseSaveTarget, saveFile } from '../utils.js';
 import {
@@ -57,7 +58,7 @@ export class Assistant {
     this.root.innerHTML = `<div class="selection-content"><section class="translation-section"><header><h3>原文 <span class="section-tag">${isSingleWord(entry.original) ? 'WORD' : 'SOURCE'}</span></h3><div>${iconButton('speak-source', 'volume-2', '朗读原文')}${iconButton('copy-source', 'copy', '复制原文')}</div></header><p class="source-text">${esc(entry.original)}</p></section><section class="translation-section"><header><h3>${entry.dictionary ? '词典释义' : '翻译结果'} <span class="section-tag">${esc(entry.engine || '')}</span></h3><div>${iconButton('speak-result', 'volume-2', '朗读译文')}${iconButton('copy-result', 'copy', '复制译文')}</div></header><div id="selection-result" class="markdown"></div>${entry.loading ? '<div class="inline-loading"><span class="spinner small"></span>正在理解这段文字…</div>' : ''}${entry.error ? `<div class="error-card">${icon('circle-alert')}<span>${esc(entry.error)}</span></div>${button('retry-selection', 'refresh-cw', '重试')}` : ''}</section><div class="translation-footnote">${icon('check')}自动整理 PDF 断词与换行</div></div>`;
     const target = this.root.querySelector('#selection-result');
     if (entry.dictionary) {
-      const { entries, chinese, forms, source, warning } = entry.dictionary;
+      const { entries, chinese, forms, source, warning, chineseSource } = entry.dictionary;
       const first = entries[0];
       target.innerHTML = `<div class="dictionary-heading"><strong>${esc(first.word)}</strong><span>${esc(first.phonetic || first.phonetics?.find((p) => p.text)?.text || '')}</span>${iconButton('word-audio', 'volume-2', '播放词典发音')}</div>${chinese ? `<p class="chinese-meaning">${esc(chinese)}</p>` : '<p class="note">中文释义暂不可用，下面为词典原文释义。</p>'}${entries
         .flatMap((e) => e.meanings)
@@ -67,7 +68,7 @@ export class Assistant {
         )
         .join(
           '',
-        )}${forms?.length ? `<p class="note"><b>词形变化</b><br>${forms.map(esc).join('<br>')}</p>` : '<p class="note">此词条暂无可用的词形变化数据。</p>'}${warning ? `<p class="note">${esc(warning)}</p>` : ''}<p class="dictionary-credit">${esc(source || '在线词典')} · ${esc(first.license?.name || '')} · MyMemory · <a href="https://en.wiktionary.org/wiki/${encodeURIComponent(first.word)}" target="_blank" rel="noopener noreferrer">Wiktionary 词形</a></p>`;
+        )}${forms?.length ? `<p class="note"><b>词形变化</b><br>${forms.map(esc).join('<br>')}</p>` : '<p class="note">此词条暂无可用的词形变化数据。</p>'}${warning ? `<p class="note">${esc(warning)}</p>` : ''}<p class="dictionary-credit">${esc(source || '在线词典')} · ${esc(first.license?.name || '')} · ${esc(BASIC_APIS.find((p) => p.id === chineseSource)?.name || (chineseSource === 'google' ? 'Google 翻译' : 'MyMemory'))} · <a href="https://en.wiktionary.org/wiki/${encodeURIComponent(first.word)}" target="_blank" rel="noopener noreferrer">Wiktionary 词形</a></p>`;
       this.root.querySelector('[data-action="word-audio"]').onclick = () => {
         const url = entries.flatMap((e) => e.phonetics || []).find((p) => /^https:\/\//.test(p.audio))?.audio;
         if (url) new Audio(url).play().catch(() => this.speak(entry.original, 'en'));
@@ -104,7 +105,9 @@ export class Assistant {
       engine: isSingleWord(text)
         ? '在线词典'
         : settings.translationEngine === 'online'
-          ? '在线翻译'
+          ? basicOptions(settings.basicTranslation).find(
+              ([key]) => key === settings.basicTranslation.defaultProvider,
+            )?.[1] || '在线翻译'
           : 'AI 翻译',
     };
     this.selections.set(id, entry);
@@ -117,16 +120,23 @@ export class Assistant {
     };
     try {
       if (isSingleWord(text))
-        entry.dictionary = await lookupWord(text, controller.signal, (partial) => {
-          entry.dictionary = partial;
-          refresh();
-        });
+        entry.dictionary = await lookupWord(
+          text,
+          controller.signal,
+          (partial) => {
+            entry.dictionary = partial;
+            refresh();
+          },
+          settings.basicTranslation,
+        );
       else if (settings.translationEngine === 'online')
         entry.result = await onlineTranslate(
           text,
           settings.sourceLanguage,
           settings.targetLanguage,
           controller.signal,
+          settings.basicTranslation,
+          settings.translationStyle,
         );
       else
         await requestLlm({
@@ -159,14 +169,19 @@ export class Assistant {
       `<div class="settings-form"><div class="field"><span>翻译引擎</span>${select(
         'translation-engine',
         [
-          ['online', 'MyMemory · 在线翻译'],
+          ...basicOptions(settings.basicTranslation).map(([id, name]) => [
+            id === 'mymemory' ? 'online' : `basic:${id}`,
+            id === 'mymemory' ? 'MyMemory · 在线翻译' : name,
+          ]),
           ...settings.chatProviders.map((p) => [`llm:${p.id}`, `${p.name} · ${p.model || 'LLM'}`]),
         ],
         settings.translationEngine === 'online'
-          ? 'online'
+          ? settings.basicTranslation.defaultProvider === 'mymemory'
+            ? 'online'
+            : `basic:${settings.basicTranslation.defaultProvider}`
           : `llm:${settings.translationProviderId || settings.defaultChatProviderId}`,
         '翻译引擎',
-      )}</div><div class="field-pair"><div class="field"><span>原文语言</span>${select('source-language', LANGUAGES, settings.sourceLanguage, '原文语言')}</div><div class="field"><span>目标语言</span>${select('target-language', LANGUAGES, settings.targetLanguage, '目标语言')}</div></div><div class="field"><span>LLM 翻译风格</span>${select(
+      )}</div><div class="field-pair"><div class="field"><span>原文语言</span>${select('source-language', LANGUAGES, settings.sourceLanguage, '原文语言')}</div><div class="field"><span>目标语言</span>${select('target-language', LANGUAGES, settings.targetLanguage, '目标语言')}</div></div><div class="field"><span>翻译风格</span>${select(
         'translation-style',
         [
           ['学术论文', '学术论文'],
@@ -176,19 +191,30 @@ export class Assistant {
         ],
         settings.translationStyle,
         '翻译风格',
-      )}</div><p class="note">单个英文单词始终查询在线词典，不调用大模型。在线翻译按所选原文语言请求。</p><div class="modal-actions">${button('save-translation', 'check', '保存', 'primary')}</div></div>`,
+      )}</div><p class="note">单个英文单词始终查询在线词典，不调用大模型。在线翻译按所选原文语言请求；百度“学术论文”使用中英论文领域接口，其他风格使用通用接口。</p><div class="modal-actions">${button('save-translation', 'check', '保存', 'primary')}</div></div>`,
     );
     dialog.element.querySelector('[data-action="save-translation"]').onclick = async () => {
       try {
-        await saveSettings({
-          translationEngine: selected('translation-engine') === 'online' ? 'online' : 'llm',
-          translationProviderId: selected('translation-engine')?.startsWith('llm:')
-            ? selected('translation-engine').slice(4)
-            : settings.translationProviderId,
-          sourceLanguage: selected('source-language'),
-          targetLanguage: selected('target-language'),
-          translationStyle: selected('translation-style'),
-        });
+        const engine = selected('translation-engine');
+        await saveBasicTranslation(
+          (current) => ({
+            ...current,
+            defaultProvider: engine?.startsWith('basic:')
+              ? engine.slice(6)
+              : engine === 'online'
+                ? 'mymemory'
+                : current.defaultProvider,
+          }),
+          {
+            translationEngine: engine?.startsWith('llm:') ? 'llm' : 'online',
+            translationProviderId: selected('translation-engine')?.startsWith('llm:')
+              ? selected('translation-engine').slice(4)
+              : settings.translationProviderId,
+            sourceLanguage: selected('source-language'),
+            targetLanguage: selected('target-language'),
+            translationStyle: selected('translation-style'),
+          },
+        );
         dialog.close();
         toast('翻译设置已保存');
       } catch (e) {

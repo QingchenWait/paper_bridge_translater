@@ -1,6 +1,6 @@
 # 项目结构与开发逻辑
 
-适用版本：0.2.1。入口为 `index.html` → `src/js/main.js`。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
+适用版本：0.3.0。入口为 `index.html` → `src/js/main.js`。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
 
 ## 文件树
 
@@ -41,7 +41,8 @@ pdf_translater/
 │  │  ├─ document-download.js      一致快照合并编辑，所有 PDF 下载共用
 │  │  ├─ utils.js                  转义、UUID、下载、哈希、格式化
 │  │  ├─ text.js                   PDF 排版清洗、单词判断、按字节切片
-│  │  ├─ translation.js            免费词典、词形补充、MyMemory 翻译
+│  │  ├─ translation.js            免费词典、词形补充、基础翻译入口
+│  │  ├─ basic-translation.js      非 LLM 服务配置、签名、JSONP、分段和响应解析
 │  │  ├─ llm.js                    Chat/Responses、文件输入、SSE、原生 PDF
 │  │  ├─ markdown.js               Markdown/KaTeX/高亮/安全 HTML
 │  │  ├─ pdf.js                    PDF.js 加载、文本提取、可见页和批注交互
@@ -56,7 +57,8 @@ pdf_translater/
 │  │     ├─ assistant.js           划词、全文、AI 会话与任务状态
 │  │     ├─ library.js             文档管理卡片/列表、多选和操作弹窗
 │  │     ├─ pdf-navigation.js      缩略图、内置书签、目标解析及导航渲染生命周期
-│  │     ├─ settings-panel.js      设置四页、启动引导、迁移入口
+│  │     ├─ settings-panel.js      设置五页、启动引导、迁移入口
+│  │     ├─ basic-settings.js      基础翻译折叠配置、连接测试、默认与保存
 │  │     ├─ desktop.js             桌面状态和分栏调整独立交互
 │  │     └─ mobile.js              移动端分屏、视口；保留阅读选区供标注
 │  └─ styles/
@@ -76,6 +78,7 @@ pdf_translater/
 ├─ tests/
 │  ├─ core.test.mjs                数据、清洗、SSE 和存档协议测试
 │  ├─ providers.test.mjs           模板、可信官网映射、原配置保留与原生桥接测试
+│  ├─ basic-translation.test.mjs   三家签名、响应、分段/取消、凭据存档和并发保存
 │  ├─ selection-actions.test.mjs   选区规则、多类型/多页与局部清除测试
 │  ├─ save-file.test.mjs           单次保存、取消和写失败不重复下载测试
 │  ├─ shapes.test.mjs              形状几何、删除线及字号规则测试
@@ -86,7 +89,8 @@ pdf_translater/
 │     ├─ optimizations.spec.js     状态反馈、松手翻译、绘图尺寸和导航回归
 │     ├─ reader-refinements.spec.js 字形坐标、旋转/裁切、高 DPI、拖动/历史及搜索浮窗
 │     ├─ library.spec.js           文档库交互、共享历史、下载、切换锁和无损升级
-│     └─ editing-settings.spec.js  编辑导出回读、选词/绘图手势、引导/API 设置回归
+│     ├─ editing-settings.spec.js  编辑导出回读、选词/绘图手势、引导/API 设置回归
+│     └─ basic-translation.spec.js 基础设置/教程/默认引擎、JSONP 和阅读区路由
 ├─ dist/                           构建产物，不手工编辑
 ├─ node_modules/                   npm 依赖，不手工编辑
 ├─ .cache/                         npm 缓存、开发期官方文档，不进入发布
@@ -115,7 +119,7 @@ pdf_translater/
 | conversations | id, rootId, title, createdAt, updatedAt | 逻辑文档下多条独立会话；原文和译文共享 |
 | messages | id, conversationId, role, content, status, error?, createdAt, updatedAt, recovered? | 用户先保存再请求；助手逐增量保存；不按轮数裁剪 |
 | translations | id, documentId, rootId, content, language, providerId, status, error?, output, generatedDocumentId? | 多次全文翻译记录及 PDF 产物关联 |
-| settings | id, value, updatedAt | `app` 存 API、翻译/WebDAV、hideOnboarding；`workspace` 存标签/当前对话；`annotation-tools` 存工具偏好；`library-view` 存当前目录、卡片/列表及排序 |
+| settings | id, value, updatedAt | `app` 存 LLM/API、basicTranslation、翻译/WebDAV、hideOnboarding；`workspace` 存标签/当前对话；`annotation-tools` 存工具偏好；`library-view` 存当前目录、卡片/列表及排序 |
 | folders | id, parentId, name, createdAt, updatedAt | parentId 为空表示根目录，禁止自引用和循环，不以显示名称确定操作范围 |
 | deletions | id, store, key, documentId?/rootId?/conversationId?, updatedAt | 精确删除标记，id=`store-key`；只记录已删实体 ID 和所有者，不保存文件内容，不递归推导额外删除 |
 
@@ -159,15 +163,31 @@ pdf_translater/
 - `translationProviderId`：划词/句子翻译专用 API 偏好；旧数据缺省取默认 API，不修改 `defaultChatProviderId`。
 - `getSettings()`、`reloadSettings()`：读取/重载配置缓存。
 - `saveSettings(next)`：先提交存储再更新缓存和派发 `settings-changed`。
+- `saveBasicTranslation(update,preferences?)`：串行读取最新 basicTranslation 后合并单项凭据/默认值，避免多家配置并发保存互相覆盖；阅读区基础引擎选择复用此入口，可同时保存风格等偏好。
 - `getProvider(settings,id?)`：选择 API，缺少地址或模型时给出明确错误。
 
 ### providers.js / document-download.js
 
 - `PROVIDERS`：DeepSeek、MiMO、Qwen、OpenAI、GLM、Kimi、LM Studio、自定义八个模板；名称、Base URL、model 按用户指定值，官网 keyUrl 仅供固定链接映射；模板不应用于已有配置。具体值见 README。
 - `providerKeyUrl(baseUrl)`：读取当前输入，按完整主机名匹配已知服务；拒绝无效协议、内嵌凭据、自定义端口和仿冒后缀域名，返回固定官网 URL 或 null，绝不携带输入的查询参数/Key。
-- `openProviderWebsite(baseUrl)`：网页通过 noopener/noreferrer 打开新标签；Tauri 2 使用 opener.openUrl 或 plugin:opener|open_url，Tauri 1 使用 shell.open，唤起默认浏览器。打包需启用插件权限，仓库不包含原生安装包。
+- `openExternalWebsite(url)`：只允许不带内嵌凭据的 HTTPS 链接，供已知官网及基础服务教程复用网页/Tauri 打开逻辑。
+- `openProviderWebsite(baseUrl)`：映射固定官网后委托 openExternalWebsite；网页通过 noopener/noreferrer 打开新标签；Tauri 2 使用 opener.openUrl 或 plugin:opener|open_url，Tauri 1 使用 shell.open，唤起默认浏览器。打包需启用插件权限，仓库不包含原生安装包。
 - `editedDocumentBlob(documentId)`：readonly 事务读取 documents/files/annotations 的同一快照；仅合并所属文档未删除记录。没有编辑直接返回原 Blob，有编辑按需加载 PDF.js/pdf-lib 并复用 exportAnnotatedPdf，finally 释放独立源解析器；不覆盖数据库文件、不依赖随标签切换销毁的阅读器实例。阅读栏、文档管理所有下载模式、已生成译文下载均复用。
 - `hideOnboarding`：默认 false，只有显式开关设置为 true 才跳过引导；onboardingDone 保留兼容字段但不再控制弹出。切换开关立即保存，跳过/完成前等待保存，随既有设置备份流程持久化。
+
+### basic-translation.js
+
+- `BASIC_APIS` / `BASIC_FREE`：固定三家需凭据的服务元数据、字段标签与额度文案，以及 MyMemory/Google 两个免 Key 选项。
+- `basicConfigured` / `basicOptions`：判断凭据完整度；只将完整配置加入选择器。
+- `normalizeBasicTranslation`：规范化 `{defaultProvider,providers:{baidu,aliyun,volcengine}}`；每家为 `{keyId,secret,connection?}`。connection 仅保存成功状态、checkedAt 和测试风格，不保存测试文本或译文；旧设置缺省 MyMemory。
+- `mergeBasicTranslation(local,incoming)`：存档恢复时保留缺失的本地凭据；无密钥的不同账号不覆盖现有完整账号；不混用账号 ID 和另一账号的密钥。
+- `basicLanguage(provider,language)`：应用语言码映射到各服务语言码；Baidu academic 限中英，Google 保留标准代码。
+- `buildBasicRequest(provider,config,text,source,target,style,{date,nonce})`：生成官方端点的完整请求；百度 MD5(appid+q+salt+[domain]+secret)，阿里 RPC POST HMAC-SHA1，火山 V4 HMAC-SHA256，region=cn-north-1/service=translate；从不手动设置浏览器禁止的 Host，只将域名纳入签名。
+- `baiduJsonp(url,signal)`：仅允许固定官方 origin 及两个翻译路径；随机一次性 callback、无 Referrer，完成/错误/超时/取消时移除 script 与回调。
+- `parseBasicResponse(provider,json)`：解析五种响应、多条译文、服务错误码；拒绝空结果/无效结构，不误标成功，不把原始密钥反射到错误文案。
+- `sendBasicRequest`（内部）：fetch/JSONP、20 秒单次超时；百度在当前页面按全局队列维持至少 1050ms 请求间隔，支持取消等待。不会将选中文字发往未选服务或 LLM。
+- `basicTranslate(text,options)`：清理 PDF 文本后按 UTF-8 字节分段完整翻译；MyMemory 450，Google/百度 GET 1500，阿里/火山 POST 4500 字节，保留全部段；清理与同语种处理沿用现有功能。
+- `digest` / `hmac` / `encode` / `query` / `hex` / `bytes`：浏览器 Web Crypto、RFC3986 编码和签名序列化；MD5 按需加载已锁定的 @noble/hashes/legacy.js。
 
 ### text.js / translation.js
 
@@ -175,8 +195,8 @@ pdf_translater/
 - `isSingleWord(text)`：英文单词（可含连字或撇号）走词典，其余走句子翻译。
 - `splitForTranslation(text,byteLimit=450)`：按 Unicode 码点切片，以 UTF-8 字节限制请求，不破坏代理对。
 - `CLEANING_INSTRUCTIONS`：统一 LLM 排版修复和文档内指令隔离提示。
-- `onlineTranslate(text,source,target,signal)`：按段请求 MyMemory，验证服务状态/额度，支持超时和取消。
-- `lookupWord(word,signal,onUpdate)`：Free Dictionary/Wiktionary REST 英文定义并行竞速，中文与词形独立并行；增量回调显示先到结果，单源超时不阻断其他来源。仅中文可用时说明缺少详细词典，不查询 LLM。
+- `onlineTranslate(text,source,target,signal,basic,style)`：按 basic.defaultProvider 委托 basicTranslate，缺省 MyMemory，保留超时/取消；lookupWord 的中文补充使用同一基础配置及通用风格。
+- `lookupWord(word,signal,onUpdate,basic)`：Free Dictionary/Wiktionary REST 英文定义并行竞速，中文与词形独立并行；增量回调显示先到结果，单源超时不阻断其他来源。仅中文可用时说明缺少详细词典，不查询 LLM。
 - `dictionaryJson(url,signal)` / `plainText(html)`（内部）：6.5 秒独立词典超时，提取词条 HTML 的纯文字。
 - `LANGUAGES`：中简/中繁/英/日/韩/法/德/西的展示和 API 代码映射。
 
@@ -261,7 +281,7 @@ pdf_translater/
 
 ### archive.js
 
-- `createArchive({includeSecrets,password})`：一致快照、二进制 PDF、SHA-256 清单、异步 ZIP；格式版本 2 包含九表及目录/删除记录，可剥除凭据和加密。
+- `createArchive({includeSecrets,password})`：一致快照、二进制 PDF、SHA-256 清单、异步 ZIP；格式版本 2 包含九表及目录/删除记录，可剥除凭据和加密。includeSecrets=false 时也清空全部基础翻译 keyId/secret/连接状态；现有云同步同样不携带它们。
 - `keyFor`、`encrypt`、`decrypt`（内部）：PBKDF2-SHA256 250000 次，AES-256-GCM；magic `PBRIDGE1` + 16 字节 salt + 12 字节 IV + 密文。
 - `readArchive(blob,password)`：接受格式 1/2，旧版新表补空；验证层级、删除记录所有者、逻辑组根锚点、跨表引用、文件哈希和 PDF 头，全部通过才允许合并。
 - 0.1.2 批注校验新增 strike、shape，校验形状枚举、起止点和可选字号/笔宽；兼容旧记录缺省字段。存档和数据库版本不变，新增记录应使用 0.1.2 或更新版本恢复。
@@ -296,17 +316,26 @@ pdf_translater/
 
 `anchoredPopover(anchor,title,body)` 复用 modal 焦点和关闭机制，将浮层固定在按钮下方 8px；限制视口宽高、窗口变化时重定位、关闭后移除监听。只用于翻译设置，不改变其他设置弹窗布局。
 
+### ui/basic-settings.js
+
+- `BasicSettings`：render 生成标题、默认模型、三个默认折叠栏目与教程；section 定位配置，capture 保留未保存输入，bindDefault/updateDefault 绑定自绘下拉并只列出已保存完整配置。
+- `status`：未配置/未测试/测试中/可连接/连接失败，成功为绿点，tooltip 提供测试时间及百度风格。
+- `test`：短句 en→zh-CN 按当前风格验证，按钮旋转等待；凭据变化递增 revision 并 abort，过期成功不覆盖当前状态；测试本身不保存账号。
+- `save`：串行合并当前服务配置，不覆盖其他服务或 LLM；更新可选项并提示保存成功。
+- `destroy`：保存本次弹窗草稿、取消全部在途测试，在换子页或关闭设置时调用。
+- 教程链接委托 openExternalWebsite，新标签或宿主系统浏览器；密钥眼睛按钮仅切换 input.type。
+
 ### ui/settings-panel.js
 
 - `providerMenu()`：复用 custom-select 的自绘服务商菜单、逐行厂商 LOGO，选择后 capture 现有草稿再追加新配置。
-- `openSettings(app,tab)`：API、备份、WebDAV、帮助四视图；API 草稿只在保存后持久化；眼睛按钮仅切换输入类型，获取按钮监听当前 URL 输入并在点击时重读；测试不覆盖设置。
+- `openSettings(app,tab)`：API、基础翻译、备份、WebDAV、帮助五视图；API 草稿只在保存后持久化；眼睛按钮仅切换输入类型，获取按钮监听当前 URL 输入并在点击时重读；测试不覆盖设置。
 - `onboarding(app)`：hideOnboarding 为 false 时，每次欢迎→选择服务→填地址/Key/模型→测试→保存；也可先使用免费翻译。独立自绘“不再显示”开关跨步骤保留且持久化，不改变旧 API 配置。
 
 ### ui/assistant.js 的 Assistant
 
 - `constructor` / `render`：绑定右栏标签，按渲染 epoch 防止旧异步视图覆盖新视图。
 - `renderSelection` / `translateSelection`：内存缓存按文档分组；新选区取消旧请求；单词与句子严格分流。
-- `settings`：按钮下方的紧凑引擎、源/目标语言、学术风格浮层；引擎逐行列出 MyMemory 和全部配置的 LLM，保存专用 API 选择。
+- `settings`：按钮下方的紧凑引擎、源/目标语言、学术风格浮层；引擎逐行列出全部可用基础翻译和已配置 LLM，保存专用 API 选择。
 - `renderFull` / `startFull`：全文参数、历史、按文档分组的独立任务、流式落盘和阶段反馈。
 - `setFullCollapsed(documentId,collapsed)`：首段译文保存后动画折叠参数；更新可展开的 sticky 进度栏，折叠内容 inert 防止焦点进入；手动展开不会在后续流式增量中重新折叠。
 - `exportTranslation`：按译文记录互斥，复用或新建译文 PDF；写入关联根 ID；打开或经 editedDocumentBlob 合并译文编辑后下载。全文请求直接返回 PDF 时不重复进入本地转换分支。
@@ -401,6 +430,9 @@ pdf_translater/
 | .record-list / [data-record] | 打开对应 PDF 的全文历史 | App.showRecords |
 | #overlay-root / .modal | 通用焦点受控弹窗、设置、密码和批注输入 | components |
 | #settings-content / #provider-form | 多 API 配置及能力设置 | settings-panel |
+| [data-action=settings-basic] / [data-select=basic-default] | 基础翻译子页面与默认模型 | BasicSettings |
+| .basic-summary / #basic-body-{id} / .basic-status | 单行折叠标题、展开配置及状态绿点 | BasicSettings.render/status |
+| [data-basic-form] / [data-action=test-basic] / [data-action=show-basic-secret] | 账号/密钥、连接测试、保存及可见性 | BasicSettings.test/save |
 | #cloud-form | WebDAV 账号、测试、同步和开关 | settings-panel / archive |
 | #archive-input | 本地 ZIP / 加密存档选择 | settings-panel / archive |
 | #onboarding-content / #onboarding-form / [name=hideOnboarding] | 启动引导步骤及“不再显示”开关 | onboarding |

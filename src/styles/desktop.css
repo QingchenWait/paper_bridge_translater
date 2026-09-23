@@ -1,5 +1,11 @@
 /* Desktop landscape layout and controls. Mobile overrides live in mobile.css. */
 @media (min-width: 961px) {
+  .basic-default {
+    margin-bottom: 1.4rem;
+  }
+  .basic-summary {
+    min-height: 3.3rem;
+  }
   #app {
     display: grid;
     grid-template-columns: 6.8rem minmax(0, 1fr);

@@ -13,7 +13,7 @@ test('provider templates use the requested values without changing saved configu
       ['OpenAI', 'https://api.openai.com/v1', 'gpt-5.6-luna'],
       ['GLM', 'https://open.bigmodel.cn/api/paas/v4', 'glm-5.3-flash'],
       ['Kimi', 'https://api.moonshot.cn/v1', 'kimi-k3'],
-      ['LM Studio', 'https://localhost:1234/v1', ''],
+      ['LM Studio', 'http://localhost:1234/v1', ''],
       ['自定义', '', ''],
     ],
   );
@@ -66,7 +66,7 @@ test('key links open a new browser tab or use the native default-browser opener'
     window.__TAURI__.opener = { openUrl: async (...args) => calls.push(args) };
     await openProviderWebsite(PROVIDERS[3].baseUrl);
     assert.deepEqual(calls.pop(), [PROVIDERS[3].keyUrl]);
-    await openProviderWebsite('https://localhost:1234/v1');
+    await openProviderWebsite('http://localhost:1234/v1');
     assert.equal(calls.length, 0);
   } finally {
     globalThis.window = original;

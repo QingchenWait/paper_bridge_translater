@@ -3,6 +3,7 @@ import { uid, esc, chooseSaveTarget, saveFile, dateLabel, errorMessage } from '.
 import { createArchive, importArchive, importFritiaSettings, syncWebDav, testWebDav } from '../archive.js';
 import { testProvider, listModels } from '../llm.js';
 import { providerKeyUrl, openProviderWebsite } from '../providers.js';
+import { BasicSettings } from './basic-settings.js';
 import {
   icon,
   providerLogo,
@@ -20,11 +21,12 @@ const providerMenu = () =>
 export async function openSettings(app, tab = 'api') {
   const settings = await getSettings();
   let draft = structuredClone(settings);
+  let basicPage;
   let activeProvider = draft.defaultChatProviderId || draft.chatProviders[0]?.id;
   const dialog = modal(
     '设置',
-    `<div class="settings-layout"><nav class="settings-nav">${button('settings-api', 'bot', '模型与 API', tab === 'api' ? 'active' : '')}${button('settings-archive', 'database', '备份与存档', tab === 'archive' ? 'active' : '')}${button('settings-cloud', 'cloud', '云同步', tab === 'cloud' ? 'active' : '')}${button('settings-about', 'circle-help', '关于与帮助', tab === 'about' ? 'active' : '')}</nav><div id="settings-content"></div></div>`,
-    { wide: true },
+    `<div class="settings-layout"><nav class="settings-nav">${button('settings-api', 'bot', '模型与 API', tab === 'api' ? 'active' : '')}${button('settings-basic', 'languages', '基础翻译功能', tab === 'basic' ? 'active' : '')}${button('settings-archive', 'database', '备份与存档', tab === 'archive' ? 'active' : '')}${button('settings-cloud', 'cloud', '云同步', tab === 'cloud' ? 'active' : '')}${button('settings-about', 'circle-help', '关于与帮助', tab === 'about' ? 'active' : '')}</nav><div id="settings-content"></div></div>`,
+    { wide: true, onClose: () => basicPage?.destroy() },
   );
   const content = dialog.element.querySelector('#settings-content');
   const run = (fn) => async (event) => {
@@ -39,6 +41,7 @@ export async function openSettings(app, tab = 'api') {
     }
   };
   const capture = () => {
+    basicPage?.capture();
     const form = content.querySelector('#provider-form');
     if (!form) return;
     const data = Object.fromEntries(new FormData(form));
@@ -51,6 +54,8 @@ export async function openSettings(app, tab = 'api') {
       });
   };
   const render = () => {
+    basicPage?.destroy();
+    basicPage = null;
     dialog.element
       .querySelectorAll('.settings-nav button')
       .forEach((btn) => btn.classList.toggle('active', btn.dataset.action === `settings-${tab}`));
@@ -192,6 +197,22 @@ export async function openSettings(app, tab = 'api') {
         };
         input.click();
       };
+    } else if (tab === 'basic') {
+      basicPage = new BasicSettings(
+        content,
+        draft.basicTranslation,
+        structuredClone(settings.basicTranslation),
+        () => {
+          app.refreshAssistant();
+        },
+      );
+      basicPage.render();
+      getSettings().then((latest) => {
+        if (basicPage && tab === 'basic') {
+          basicPage.saved = latest.basicTranslation;
+          basicPage.updateDefault();
+        }
+      });
     } else if (tab === 'archive') {
       content.innerHTML = `<h3>把阅读进度一起带走</h3><p class="muted">备份包含全部 PDF、批注、全文译文、对话和配置。导入会合并现有数据，冲突版本保留恢复副本。</p><div class="archive-card">${icon('database')}<div><h4>本地完整备份</h4><p>可选择密码加密后导出</p></div></div><label class="field"><span>备份密码（可选）</span><input id="backup-password" type="password" placeholder="留空导出普通 ZIP" autocomplete="new-password"></label><label class="toggle-row"><span>包含 API Key 和云同步凭据<small>未加密的 ZIP 可被直接读取</small></span><input id="include-secrets" type="checkbox"><span class="switch"></span></label><div class="form-actions">${button('export-archive', 'download', '导出存档', 'primary')}${button('import-archive', 'upload', '导入并合并')}</div><p class="note">文档保存在当前浏览器。清理站点数据或使用隐私窗口会影响本地存储，请保留备份。</p>`;
       content.querySelector('[data-action="export-archive"]').onclick = run(async () => {
@@ -266,7 +287,7 @@ export async function openSettings(app, tab = 'api') {
         toast('云端和本地数据已合并同步');
       });
     } else {
-      content.innerHTML = `<h3>纸间 · Paper Bridge <span class="badge">0.2.1</span></h3><p>让语言不再打断阅读。</p><div class="help-list"><p><b>选词与翻译</b><br>在 PDF 上拖选文字，单词进入在线词典，多词句子进入翻译。点击工具栏按钮可添加批注。</p><p><b>全文翻译</b><br>文件输入需接口支持。普通模型会接收提取后的完整文字；扫描件需要支持 PDF 的视觉模型。模型原生 PDF 需支持代码执行与文件输出，也可选择本地排版（视觉 PDF，无文字层）。</p><p><b>快捷键</b><br>Ctrl / ⌘ + O 打开文档 · Ctrl / ⌘ + Z 撤销批注 · Ctrl / ⌘ + Shift + Z 重做 · Esc 关闭菜单</p><p><b>数据与连接</b><br>文档默认只存本机。翻译或问答时将选定文本 / 文档发送给所选服务商。在线词典使用 Free Dictionary、Wiktionary；免费翻译使用 MyMemory，存在网络与额度限制。</p><p><b>开源致谢</b><br>PDF.js · pdf-lib · KaTeX · Lucide · Fluent Emoji · Noto Sans<br>设置及存档流程继承海姆休息室（GPL-3.0）。</p></div>`;
+      content.innerHTML = `<h3>纸间 · Paper Bridge <span class="badge">0.3.0</span></h3><p>让语言不再打断阅读。</p><div class="help-list"><p><b>选词与翻译</b><br>在 PDF 上拖选文字，单词进入在线词典，多词句子进入翻译。点击工具栏按钮可添加批注。</p><p><b>全文翻译</b><br>文件输入需接口支持。普通模型会接收提取后的完整文字；扫描件需要支持 PDF 的视觉模型。模型原生 PDF 需支持代码执行与文件输出，也可选择本地排版（视觉 PDF，无文字层）。</p><p><b>快捷键</b><br>Ctrl / ⌘ + O 打开文档 · Ctrl / ⌘ + Z 撤销批注 · Ctrl / ⌘ + Shift + Z 重做 · Esc 关闭菜单</p><p><b>数据与连接</b><br>文档默认只存本机。翻译或问答时将选定文本 / 文档发送给所选服务商。在线词典使用 Free Dictionary、Wiktionary；基础翻译支持 MyMemory、Google 和三家云 API，可在“基础翻译功能”中配置，存在网络与额度限制。</p><p><b>开源致谢</b><br>PDF.js · pdf-lib · KaTeX · Lucide · Fluent Emoji · Noto Sans<br>设置及存档流程继承海姆休息室（GPL-3.0）。</p></div>`;
     }
     bindSelects(content);
   };

@@ -1,5 +1,26 @@
 /* Independent portrait layout. Pane switching is handled by ui/mobile.js. */
 @media (max-width: 960px) {
+  .basic-default {
+    margin-bottom: 1rem;
+  }
+  .basic-summary {
+    padding: 0.85rem 0.65rem;
+    min-height: 3.25rem;
+    gap: 0.4rem;
+  }
+  .basic-provider-title {
+    font-size: 0.77rem;
+  }
+  .basic-provider-title small {
+    font-size: 0.64rem;
+  }
+  .basic-provider-body {
+    padding-inline: 0.75rem;
+  }
+  .basic-actions .button {
+    flex: 1;
+    padding-inline: 0.45rem;
+  }
   .library-header,
   .library-tools {
     flex-wrap: wrap;

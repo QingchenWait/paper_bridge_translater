@@ -1,5 +1,37 @@
 # 开发记录
 
+## 0.3.0 · 2026-09-23
+
+本轮仅新增非 LLM 基础翻译管理及相应阅读区入口、配置持久化、凭据备份处理。数据库/存档版本仍为 2，不修改已有 PDF、批注、会话或源项目。
+
+### 模块与协议
+
+- 新增 `basic-translation.js`，集中五种服务、参数构造与解析；`translation.js` 保留原入口并委托此模块，单词仍使用词典，中文释义补充跟随基础引擎，百度单词补充走通用接口。
+- Google 使用用户指定文章中的 translate.googleapis.com/translate_a/single，client=gtx/dt=t，无 Key、代理或额外后端。
+- 百度按风格选择 fieldtranslate(domain=academic) 或 translate，签名分别为 MD5(appid+q+salt+domain+secret) / MD5(appid+q+salt+secret)。官方端点不提供普通 fetch CORS，但两个接口已验证支持 JSONP；限制 origin/路径、回调唯一、取消/超时清理，GET 保守分段至 1500 UTF-8 字节，当前页面队列间隔至少 1050ms。
+- 阿里为 mt.cn-hangzhou.aliyuncs.com 上的 TranslateGeneral RPC POST，Version=2018-10-12，FormatType=text/Scene=general，HMAC-SHA1/RFC3986 排序签名。火山为 translate.volcengineapi.com 的 TranslateText、Version=2020-06-01，官方文档指定 Region=cn-north-1（不是其他云产品常见地域）；V4 SHA256 签名包含隐式 Host、日期和实际 JSON 字节摘要。
+- MyMemory 保留 450 字节分段，Google/百度 1500，阿里/火山 4500；依次翻译所有段，不静默截断、不改投其他服务。各服务按应用语言码转换，百度学术非中英方向明确报错。
+- MD5 从新依赖 @noble/hashes@2.4.0 按需加载，SHA/HMAC 使用 Web Crypto；锁文件和分发许可证同步。UI 复用已下载 Lucide 图标。
+
+### UI 与状态
+
+- 新增 `ui/basic-settings.js`，嵌入现有设置的第五个子页。默认选择器列出两家免配置服务及已保存完整凭据的三家 API；栏目默认折叠，展开教程/输入/并排测试保存按钮，密钥使用独立眼睛开关。
+- 连接测试是真实短句请求，依据当前风格，只有有效译文才显示绿点“可连接”；凭据变化取消任务并增加修订号，旧成功不能覆盖新输入。仅保存最近成功时间及风格，提示不代表永久在线或永久免费额度。
+- settings/app 新增 basicTranslation；旧数据默认 MyMemory。`saveBasicTranslation` 串行按最新值合并不同 API 与默认设置；保持 LLM 配置字段语义。设置弹窗内未保存草稿可跨子页保留，离开/关闭时停止测试。
+- 阅读区选择器列出所有基础服务和 LLM，基础引擎默认与新子页同步。没有改全文翻译和问答路由。
+- 教程外链复用网页新标签及既有 Tauri 系统浏览器桥接；公共控件在 base.css，横屏/窄屏间距与触控尺寸分别维护在 desktop.css、mobile.css。
+- 普通备份和云同步清除基础服务 keyId/secret/connection；完整凭据存档可恢复；旧存档缺字段不清空本地，新存档缺密钥不覆盖本地完整账号，不把不同 ID 与旧 Secret 混合。
+
+### 调研与验证
+
+已读取用户指定的 Google 思路及三家官方动态文档，并对照阿里、火山官方 SDK 签名器。浏览器真实调用 Google 短句成功；百度无效凭据 JSONP 返回可读的 52003，阿里响应可被浏览器读取；火山 OPTIONS 允许跨域，但本次无效凭据的实际错误响应缺少 Access-Control-Allow-Origin，浏览器只能给出连接失败。没有用户真实密钥，因此不宣称已完成三家账号成功鉴权或额度实测。
+
+新增签名测试用独立 Node crypto 对照浏览器 Web Crypto/MD5，覆盖 UTF-8、特殊字符、完整规范请求、地域、响应错误、长文本/取消、凭据备份和并发保存。新增浏览器用例覆盖桌面/手机折叠、教程新标签、眼睛、测试进度、修改中止、状态持久化、默认选择、五引擎阅读区路由及百度风格切换、JSONP 超时清理。
+
+现有 5173 端口开发服务保留；其热更新 URL 与测试动态 import 的裸 URL 会形成两个设置缓存实例，回归使用独立 5193 端口干净服务器（临时配置在 .cache，不改变发布配置）。测试选区模拟同时派发按下/松手，以遵守既有去重及松手翻译规则。旧断言同步新增 Google 选项；恢复窗口使用当前测试源，保存/标注/撤销在界面确认完成后再刷新或重选，动态标签尺寸使用可重试测量，避免读取被页码进度更新替换中的 DOM。
+
+最终验证：`npm run check`、44 项单元测试、`npm run build` 与 `npm run test:dist` 均通过。浏览器全量回归有 46 项通过，最后一项手机标签高度检查读到重绘间隙的空 DOM；改为可重试的同等高度断言后单独复测通过，47 项覆盖均已通过。生产子路径验证包含本地 Worker/资源、中文编辑 PDF 导出和持久化恢复，dist 共 277 个文件、约 16.4 MiB；MD5 按需块约 4.3 kB。桌面/手机新页面截图已人工查看。未使用任何用户真实文档或密钥。
+
 ## 0.2.1 · 2026-09-23
 
 范围限于本轮六项下载、交互、启动引导和 API 配置反馈。数据库/存档仍为版本 2，无新增 npm 依赖；不改会话上下文、翻译协议、文件移动/删除范围及源项目。
