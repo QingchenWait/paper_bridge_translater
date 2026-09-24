@@ -1,6 +1,6 @@
 # 项目结构与开发逻辑
 
-适用版本：0.3.2。入口为 `index.html` → `src/js/main.js`，浏览器标题为“纸间 · 文献翻译”。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
+适用版本：0.3.3。入口为 `index.html` → `src/js/main.js`，浏览器标题为“纸间 · 文献翻译”。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
 
 ## 文件树
 
@@ -30,6 +30,7 @@ pdf_translater/
 │  │  ├─ FLUENT-LICENSE
 │  │  ├─ LOBE-ICONS-LICENSE
 │  │  ├─ llms/{deepseek,mimo,qwen,openai,glm,kimi,lmstudio}.svg
+│  │  ├─ llms/{meta,google,baidu,aliyun,volcengine}.svg
 │  │  ├─ icons/*.svg               66 个已下载 Lucide 图标，清单见下
 │  │  └─ art/{open-book,sparkles}.png
 │  ├─ js/
@@ -47,7 +48,7 @@ pdf_translater/
 │  │  ├─ basic-translation.js      非 LLM 服务配置、签名、JSONP、分段和响应解析
 │  │  ├─ llm.js                    Chat/Responses、文件输入、SSE、原生 PDF
 │  │  ├─ markdown.js               Markdown/KaTeX/高亮/安全 HTML
-│  │  ├─ pdf-engine.js             按平台延迟加载常规/Apple legacy PDF.js 与配套 Worker
+│  │  ├─ pdf-engine.js             各平台统一按需加载官方兼容 PDF.js 与匹配 Worker
 │  │  ├─ pdf.js                    PDF.js 加载、文本提取、可见页和批注交互
 │  │  ├─ pdf-text.js               同源字体、准确尺寸/旋转与字宽/基线对齐
 │  │  ├─ pdf-search.js             文本索引、字符位置映射与大小写/全字匹配
@@ -61,11 +62,12 @@ pdf_translater/
 │  │  ├─ archive.js                ZIP、AES、校验、迁移、WebDAV
 │  │  ├─ compat/
 │  │  │  ├─ apple-webkit.js         Apple WebKit 检测、PDF 选项、触控放置与比例菜单 portal
-│  │  │  ├─ apple-streams.js        缺失 Promise/ReadableStream 能力的按需补齐
-│  │  │  └─ apple-pdf.worker.js     Apple legacy PDF.js 专用 Worker 入口
+│  │  │  ├─ pdf-runtime.js         各平台缺失 Promise/ReadableStream 能力的按需补齐
+│  │  │  └─ pdf.worker.js          各平台官方 legacy PDF.js 与通用运行时的 Worker 入口
 │  │  └─ ui/
 │  │     ├─ components.js          图标、按钮、下拉、弹窗、提示、输入框
 │  │     ├─ assistant.js           划词、全文、AI 会话与任务状态
+│  │     ├─ translation-engine.js  引擎枚举、分组菜单、品牌触发器及共享保存
 │  │     ├─ library.js             文档管理卡片/列表、多选和操作弹窗
 │  │     ├─ open-pdf.js            打开三项菜单、文档树及外部链接导入弹窗
 │  │     ├─ pdf-navigation.js      缩略图、内置书签、目标解析及导航渲染生命周期
@@ -89,6 +91,7 @@ pdf_translater/
 │  ├─ check.mjs                    递归进行 JavaScript 语法检查
 │  └─ verify-dist.mjs              Chromium/WebKit 生产子路径、无 CDN、中文导出检查
 ├─ tests/
+│  ├─ 1-s2.0-S0950705126003436-main.pdf 用户提供的密集文字性能样本，不参与发布
 │  ├─ core.test.mjs                数据、清洗、SSE 和存档协议测试
 │  ├─ providers.test.mjs           模板、可信官网映射、原配置保留与原生桥接测试
 │  ├─ dictionary-fallbacks.test.mjs 词性/子词义、中文转换、客户端识别与错误结构测试
@@ -107,6 +110,7 @@ pdf_translater/
 │  ├─ apple-webkit.test.mjs        Apple 平台识别、Promise 与 ReadableStream 回退
 │  └─ e2e/
 │     ├─ apple-webkit.spec.js      WebKit 桌面/iPad/iPhone 的渲染、翻页、缩放、触控编辑
+│     ├─ pdf-performance.spec.js   样本全页布局预算、Firefox 响应及窗口/Worker 缺失能力
 │     ├─ selection-editing.spec.js 绘图/编辑过程中不重复翻译旧选区
 │     ├─ app.spec.js               原有合成 PDF 的真实浏览器功能回归
 │     ├─ optimizations.spec.js     状态反馈、松手翻译、绘图尺寸和导航回归
@@ -118,7 +122,8 @@ pdf_translater/
 │     ├─ dictionary-fallbacks.spec.js 有道宿主、详细释义补齐、中文转换/回退/取消及来源
 │     ├─ settings-autosave.spec.js 自动保存、即时备份、动画速度、桌面/手机启动页
 │     ├─ inline-annotations.spec.js 原位输入/宽度/工具、空对象、原生导出及紧凑控件
-│     └─ v031.spec.js              打开菜单/链接/文档树、浮栏同步、原字体重复导出
+│     ├─ v031.spec.js              打开菜单/链接/文档树、浮栏同步、原字体重复导出
+│     └─ v033.spec.js              引擎分组/页签位置、启动辅助按钮/默认及固定缩放
 ├─ dist/                           构建产物，不手工编辑
 ├─ node_modules/                   npm 依赖，不手工编辑
 ├─ .cache/                         npm 缓存、开发期官方文档，不进入发布
@@ -293,9 +298,9 @@ pdf_translater/
 
 ### pdf.js
 
-- `pdf-engine.getPdfEngine()`：首次打开 PDF 时才求值 PDF.js；Apple WebKit 加载 legacy 构建和对应 Worker，其他平台使用常规构建。失败清空缓存以便重试；避免 PDF 引擎加载错误直接阻断整个 APP 启动。
-- `compat/apple-webkit.applePlatform()`：按 AppleWebKit UA、Mac/iPad 平台及触控能力分流；macOS Chrome 和其他平台保持原路径。`installAppleWebKit` 安装 Apple 专用运行时能力与根节点标记；`applePdfOptions` 禁用 Apple 上不稳定的 OffscreenCanvas/ImageDecoder。
-- `compat/apple-streams.installAppleRuntime()`：仅在 Apple 主线程及 Worker 补齐缺失的 Promise.withResolvers 和 ReadableStream 异步迭代；已有原生实现保持不变。`releaseAppleCanvases` 在切页/重排时释放旧画布。
+- `pdf-engine.getPdfEngine()`：首次打开 PDF 时加载同一版本的官方 legacy 主库及匹配 Worker，所有平台一致；上游 core-js 在窗口/Worker 中提供缺失 Map/WeakMap/Iterator 等标准能力，失败清空加载 Promise 以便重试。
+- `compat/apple-webkit.applePlatform()`：按 AppleWebKit UA、Mac/iPad 平台及触控能力选择专用交互规则；`installAppleWebKit` 仅设置 Apple 根节点标记；`applePdfOptions` 保留 Apple 图像解码参数；`releaseAppleCanvases` 在 Apple 切页/重排时释放旧画布。PDF JavaScript 能力补齐不再按此 UA 分流。
+- `compat/pdf-runtime.installPdfRuntime()`：在 App.init、getPdfEngine 和 PDF Worker 中补齐缺失的 Promise.withResolvers 和 ReadableStream 异步迭代，原生实现不变；`installPromiseResolvers` 保留 Promise 子类语义，`installStreamIterator` 串行读取、结束释放锁、提前退出按 preventCancel 决定取消。
 - `compat/apple-webkit.deferAppleTextPlacement()`：iPhone/iPad 的文本框创建等待 touchend，避免 touchstart 聚焦引发 pointercancel 和空框自动删除。`openAppleMenu/restoreAppleMenu`：只将 PDF 工具栏自绘比例菜单临时移动到 body 层，关闭后恢复原父节点。
 - `loadPdf(blob,onPassword)`：传入本地二进制及本地 CMap/字体/WASM；密码通过回调获取；为 PDF.js 6 的 loading task 提供统一 destroy 适配。
 - `extractPdfText(pdf,onProgress)`：顺序获取每页文字，按位置移除页边纯数字行号，附页码。
@@ -305,7 +310,7 @@ pdf_translater/
 - `open(doc,pdf)`：结束并等待原位编辑，再取消旧渲染、切换文档和批注。
 - `layout()`：先结束原位编辑，再计算比例、建立页面占位、观察可见页、记录滚动页码和已布局宽度/DPR。主入口仅在尺寸或 DPR 变化时请求 fit 重排，避免延迟清空选区。
 - `renderPage(number,generation)`：返回或复用该页完整绘制 Promise，供可见页加载与搜索/历史精确定位等待文字层就绪。
-- `paintPage(number,generation)`：建立画布/文字/批注/搜索/手绘层，防止旧任务回填；延续原超采样与 600 万像素预算。调用 renderAlignedText 保持字体、尺寸、裁切/旋转/UserUnit 一致；加载后重绘搜索标记。
+- `paintPage(number,generation)`：建立画布/批注/搜索/手绘层；文字容器先脱离 DOM，由 renderAlignedText 的 mount 回调验证代数/画布后插在 ink 前，旧任务取消时不回填。延续原超采样与 600 万像素预算、字体、尺寸、裁切/旋转/UserUnit 对齐；加载后重绘搜索标记。
 - `goTo(page)`、`setZoom(zoom)`：页码边界、滚动和重新布局。
 - `goToLocation(page,rect)`：先等待页面就绪，再按归一化位置滚动纵/横轴并更新页码。
 - `getPageContent(number)`：按当前 PDF 缓存文本提取 Promise，切换文档清除。
@@ -332,7 +337,7 @@ pdf_translater/
 
 ### pdf-text.js / pdf-search.js
 
-- `renderAlignedText(page,content,container,viewport)`：从 PDF.js 已加载字体取得同源字体/字重/斜体，统一文档语言；保留官方 TextLayer 并校正实际 DOM 字宽、精确位置和基线，显式设置未旋转页面尺寸并应用旋转 CSS。返回文字段与 itemIndex→span 映射供搜索定位。
+- `renderAlignedText(page,content,container,viewport,mount?)`：以原 PDF 字体离线构建官方 TextLayer，mount 验证成功后一次挂载；统一设置字重/斜体等，再一次性快照所有 computed 字宽/字体数值，最后批量写位置/缩放，避免读写交错强制重排。原基线、未旋转尺寸、旋转 CSS、itemIndex→span 映射保留；mount 返回 false 时终止旧任务并返回 null。
 - `indexPageText(items)`：生成搜索字符串与每个原始文本片段的范围；换行和有间距片段间插空白，保留字符索引映射。
 - `findPageMatches(index,query,{caseSensitive,wholeWord})`：转义查询中的正则字符，支持空白跨片段、大小写及 Unicode 词边界，返回全部匹配范围、parts 和单行摘要。
 
@@ -397,6 +402,8 @@ pdf_translater/
 
 Apple WebKit 的 PDF 工具栏下拉由 `bindSelects` 临时挂到 body，选项点击及 `closeMenus` 均调用 `restoreAppleMenu`；其他位置和平台仍按原 DOM 层级展示。
 
+`select` 的可选第六参数 fallbackLabel 支持菜单外的当前值；缩放只显示真实比例而不追加选项。没有对应选项时，打开菜单聚焦第一项，支持方向键与 Esc。
+
 `anchoredPopover(anchor,title,body)` 复用 modal 焦点和关闭机制，将浮层固定在按钮下方 8px；限制视口宽高、窗口变化时重定位、关闭后移除监听。只用于翻译设置，不改变其他设置弹窗布局。
 
 ### ui/basic-settings.js
@@ -412,17 +419,28 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 
 ### ui/settings-panel.js
 
+- `bindProviderActions(form,readProvider,onModelSelected)`：设置/启动配置共用；读取当前地址和 Key、官网映射、模型列表请求/选择，设置页选择后自动保存；请求返回时表单已移除或凭据已改变则不填入过期列表。
 - `providerMenu()`：复用 custom-select 的自绘服务商菜单、逐行厂商 LOGO，选择后 capture 现有草稿再追加新配置。
 - `openSettings(app,tab)`：API、基础翻译、备份、WebDAV、帮助五视图；新增、填写、选择协议/能力/默认、移除均自动持久化；眼睛按钮仅切换输入类型，获取按钮监听当前 URL 输入并在点击时重读；测试不覆盖设置。
 - `persistApi` / `autoSaveApi`（openSettings 内部）：capture 从当前表单自身读取协议和字段，使用 apiSnapshot 去重并调用串行 saveSettings；同步配置卡片名称，不重绘输入框。切换子页、配置及关闭窗口均捕获最后输入，自动保存只在失败时报告。
 - `saveApi(close)`：顶部“保存当前设置”传 false，底部“保存设置”传 true，均等待真实落盘，前者保持窗口。
 - `onboarding(app)`：hideOnboarding 为 false 时显示欢迎→服务商→配置流程，主标题为“纸间 · 文献翻译 & AI 分析”，作者链接通过 openExternalWebsite 打开；“直接进入 APP”与配置按钮居中，偏好开关右下角，新增右上角关闭按钮。关闭本次引导不等于不再显示，只有显式开关控制后续弹出。
+- 启动配置复用 bindProviderActions，不添加明文切换；保存时同时更新默认问答与 translationEngine/translationProviderId，保留已有配置列表及其他设置。
+- `#onboarding-form [data-action=get-api-key]` 映射官网获取，`[data-action=list-models]` 映射模型列表请求，`.model-list [data-model]` 映射填入当前模型名称；与 #provider-form 共用辅助动作但仅设置页提供眼睛按钮。
+
+### ui/translation-engine.js / providers.js 品牌映射
+
+- `translationEngines(settings)`：所有可用基础 API 和已配置 LLM 映射成 key/name/brand/kind；`translationEngineValue` 读取现有默认，保留 online/basic:/llm: 编码。
+- `saveTranslationEngine(key,preferences)`：沿用设置写入队列，只更新选中引擎/明确传入的语言和风格；key 缺省时不改引擎。
+- `engineMenu` / `engineTrigger`：自绘两组 listbox、品牌图标和类型；未知品牌复用 bot 图标。MyMemory 使用指定 Meta 图标，不改变请求服务。
+- `providerBrand(provider)`：优先匹配配置地址，其次识别代理中的模型/公司名称；自定义未知品牌返回 custom，保存的 UUID 不用于推测公司。
 
 ### ui/assistant.js 的 Assistant
 
 - `constructor` / `render`：绑定右栏标签，按渲染 epoch 防止旧异步视图覆盖新视图。
+- `renderEngine(settings)`：划词页更新顶部引擎，其他页隐藏；订阅 settings-changed，按内容签名去重，保存时保留焦点，失败恢复已持久化的选项。
 - `renderSelection` / `translateSelection`：内存缓存按文档分组；新选区取消旧请求；单词与句子严格分流。
-- `settings`：按钮下方的紧凑引擎、源/目标语言、学术风格浮层；引擎逐行列出全部可用基础翻译和已配置 LLM，保存专用 API 选择。
+- `settings`：按钮下方的语言/风格浮层，仅全文/问答页另显示原样式的引擎下拉；与顶部引擎共用保存规则。
 - `renderFull` / `startFull`：全文参数、历史、按文档分组的独立任务、流式落盘和阶段反馈。
 - `setFullCollapsed(documentId,collapsed)`：首段译文保存后动画折叠参数；更新可展开的 sticky 进度栏，折叠内容 inert 防止焦点进入；手动展开不会在后续流式增量中重新折叠。
 - `exportTranslation`：按译文记录互斥，复用或新建译文 PDF；写入关联根 ID；打开或经 editedDocumentBlob 合并译文编辑后下载。全文请求直接返回 PDF 时不重复进入本地转换分支。
@@ -504,6 +522,7 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 | .open-document-tree / .tree-document | 可折叠文档树、点击已有 PDF 打开 | OpenPdfMenu.openLibrary |
 | #external-pdf-form / .pdf-filename-field / .external-pdf-status | 链接、可选重命名及固定后缀、加载/错误反馈 | OpenPdfMenu.openLink / parsePdfLink |
 | #pdf-toolbar / [data-select=zoom] / #page-input | 阅读缩放、导航、编辑工具、颜色指示和导出 | App.renderToolbar |
+| [data-select=zoom] .select-trigger | 非标准比例由 select 的 fallbackLabel 显示，菜单固定七项；减号先于加号 | App.renderToolbar / components.select |
 | [data-action=thumbnails] / [data-action=bookmarks] / [data-action=search-pdf] / #pdf-navigation | 统一导航入口；桌面分栏或移动浮窗 | PdfNavigation / App |
 | .pdf-thumbnail / .pdf-bookmark | 缩略图跳页、显式/命名书签跳页 | PdfNavigation |
 | .pdf-navigation-tabs / .navigation-search-form / .search-filters | 三模式页签、搜索输入/按钮、大小写与全字开关 | PdfNavigation |
@@ -517,6 +536,7 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 | #document-status / #save-status | 页数、大小、本地提交状态 | App |
 | [data-assistant-tab] | 划词 / 全文 / AI 问答切换 | Assistant |
 | #translation-settings | 翻译引擎和风格设置浮层 | Assistant.settings |
+| #selection-engine / .engine-group-title / .engine-kind | 划词顶部引擎、机翻/AI 分组与随右栏宽度隐藏的类型文字 | Assistant.renderEngine / translation-engine.js / desktop.css / mobile.css |
 | #selection-result | 在线词典或句子结果，不持久化 | Assistant.renderSelection |
 | .dictionary-credit | 主要词典、中文词义与详细解释翻译来源、备选署名/词条/许可证；dictionaryLink 仅允许无凭据 HTTPS | Assistant.renderSelection / dictionaryLink |
 | #full-stage / #full-result | 全文状态和完整 Markdown 结果 | Assistant.startFull |

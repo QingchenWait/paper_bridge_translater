@@ -18,6 +18,60 @@ import {
 } from './components.js';
 const providerMenu = () =>
   `<div class="custom-select provider-add" data-select="provider-preset" data-value=""><button type="button" class="button select-trigger" data-action="add-provider" aria-label="添加" aria-haspopup="listbox" aria-expanded="false">${icon('plus')}<span>添加</span></button><div class="select-menu" role="listbox" aria-label="选择服务商" hidden>${PROVIDERS.map((p) => `<button type="button" role="option" aria-selected="false" data-value="${p.id}">${providerLogo(p.id)}<span>${p.name}</span></button>`).join('')}</div></div>`;
+// Both configuration screens read the live fields, including unsaved endpoints.
+function bindProviderActions(form, readProvider, onModelSelected = () => {}) {
+  const getKey = form.querySelector('[data-action="get-api-key"]');
+  const updateKeyLink = () => {
+    getKey.disabled = !providerKeyUrl(form.elements.baseUrl.value);
+  };
+  form.elements.baseUrl.addEventListener('input', updateKeyLink);
+  getKey.onclick = async () => {
+    getKey.disabled = true;
+    try {
+      await openProviderWebsite(form.elements.baseUrl.value);
+    } catch (error) {
+      toast(errorMessage(error), 'error');
+    } finally {
+      updateKeyLink();
+    }
+  };
+  updateKeyLink();
+  const modelButton = form.querySelector('[data-action="list-models"]');
+  modelButton.onclick = async () => {
+    const provider = readProvider();
+    modelButton.disabled = true;
+    modelButton.innerHTML = icon('loader-circle', 'icon-spin');
+    try {
+      const models = await listModels(provider);
+      if (
+        !form.isConnected ||
+        form.elements.baseUrl.value !== provider.baseUrl ||
+        form.elements.apiKey.value !== provider.apiKey
+      )
+        return;
+      const field = form.elements.model.closest('.field');
+      field.querySelector('.model-list')?.remove();
+      const list = document.createElement('div');
+      list.className = 'model-list';
+      list.innerHTML = models
+        .map((m) => `<button type="button" data-model="${esc(m)}">${esc(m)}</button>`)
+        .join('');
+      list.onclick = (event) => {
+        const option = event.target.closest('[data-model]');
+        if (!option) return;
+        form.elements.model.value = option.dataset.model;
+        onModelSelected();
+        list.remove();
+      };
+      field.append(list);
+    } catch (error) {
+      if (form.isConnected) toast(errorMessage(error), 'error');
+    } finally {
+      modelButton.disabled = false;
+      modelButton.innerHTML = icon('refresh-cw');
+    }
+  };
+}
 export async function openSettings(app, tab = 'api') {
   const settings = await getSettings();
   let draft = structuredClone(settings);
@@ -136,7 +190,6 @@ export async function openSettings(app, tab = 'api') {
         form.addEventListener('change', autoSaveApi);
         form.addEventListener('valuechange', autoSaveApi);
         const eye = form.querySelector('[data-action="toggle-api-key"]');
-        const getKey = form.querySelector('[data-action="get-api-key"]');
         eye.setAttribute('aria-pressed', 'false');
         eye.onclick = () => {
           const visible = form.elements.apiKey.type === 'password';
@@ -146,21 +199,14 @@ export async function openSettings(app, tab = 'api') {
           eye.title = visible ? '隐藏 API Key' : '显示 API Key';
           eye.setAttribute('aria-label', eye.title);
         };
-        const updateKeyLink = () => {
-          getKey.disabled = !providerKeyUrl(form.elements.baseUrl.value);
-        };
-        form.elements.baseUrl.addEventListener('input', updateKeyLink);
-        getKey.onclick = async () => {
-          getKey.disabled = true;
-          try {
-            await openProviderWebsite(form.elements.baseUrl.value);
-          } catch (error) {
-            toast(errorMessage(error), 'error');
-          } finally {
-            updateKeyLink();
-          }
-        };
-        updateKeyLink();
+        bindProviderActions(
+          form,
+          () => {
+            capture();
+            return { ...draft.chatProviders.find((p) => p.id === activeProvider) };
+          },
+          autoSaveApi,
+        );
       }
       content.querySelector('[data-action="delete-provider"]')?.addEventListener('click', () => {
         draft.chatProviders = draft.chatProviders.filter((p) => p.id !== activeProvider);
@@ -185,29 +231,6 @@ export async function openSettings(app, tab = 'api') {
             AbortSignal.timeout(45000),
           );
           toast('连接成功，模型已响应');
-        }),
-      );
-      content.querySelector('[data-action="list-models"]')?.addEventListener(
-        'click',
-        run(async () => {
-          capture();
-          const models = await listModels(draft.chatProviders.find((p) => p.id === activeProvider));
-          const field = content.querySelector('[name="model"]').closest('.field');
-          field.querySelector('.model-list')?.remove();
-          const list = document.createElement('div');
-          list.className = 'model-list';
-          list.innerHTML = models
-            .map((m) => `<button type="button" data-model="${esc(m)}">${esc(m)}</button>`)
-            .join('');
-          list.onclick = (e) => {
-            const b = e.target.closest('[data-model]');
-            if (b) {
-              content.querySelector('[name="model"]').value = b.dataset.model;
-              autoSaveApi();
-              list.remove();
-            }
-          };
-          field.append(list);
         }),
       );
       const saveApi = async (close) => {
@@ -324,7 +347,7 @@ export async function openSettings(app, tab = 'api') {
         toast('云端和本地数据已合并同步');
       });
     } else {
-      content.innerHTML = `<h3>纸间 · 文献翻译 & AI 分析 <span class="badge">0.3.2</span></h3><p>青尘工作室出品 :: LLM 划词翻译 | PDF 标注编辑 | AI 文献问答</p><div class="help-list"><p><b>选词与翻译</b><br>在 PDF 上拖选文字，单词进入在线词典，多词句子进入翻译。点击工具栏按钮可添加批注。</p><p><b>全文翻译</b><br>文件输入需接口支持。普通模型会接收提取后的完整文字；扫描件需要支持 PDF 的视觉模型。模型原生 PDF 需支持代码执行与文件输出，也可选择本地排版（视觉 PDF，无文字层）。</p><p><b>快捷键</b><br>Ctrl / ⌘ + O 打开文档 · Ctrl / ⌘ + Z 撤销批注 · Ctrl / ⌘ + Shift + Z 重做 · Esc 关闭菜单</p><p><b>数据与连接</b><br>文档默认只存本机。翻译或问答时将选定文本 / 文档发送给所选服务商。在线词典使用 Free Dictionary、Wiktionary，并支持 FreeDictionaryAPI、3325 备选及客户端有道；英文详细释义通过基础翻译 API 转成中文。基础翻译支持 MyMemory、Google 和三家云 API，可在“基础翻译功能”中配置，存在网络与额度限制。</p><p><b>开源致谢</b><br>PDF.js · pdf-lib · KaTeX · Lucide · Fluent Emoji · Noto Sans<br>设置及存档流程继承海姆休息室（https://fritia.online）。</p></div>`;
+      content.innerHTML = `<h3>纸间 · 文献翻译 & AI 分析 <span class="badge">0.3.3</span></h3><p>青尘工作室出品 :: LLM 划词翻译 | PDF 标注编辑 | AI 文献问答</p><div class="help-list"><p><b>选词与翻译</b><br>在 PDF 上拖选文字，单词进入在线词典，多词句子进入翻译。点击工具栏按钮可添加批注。</p><p><b>全文翻译</b><br>文件输入需接口支持。普通模型会接收提取后的完整文字；扫描件需要支持 PDF 的视觉模型。模型原生 PDF 需支持代码执行与文件输出，也可选择本地排版（视觉 PDF，无文字层）。</p><p><b>快捷键</b><br>Ctrl / ⌘ + O 打开文档 · Ctrl / ⌘ + Z 撤销批注 · Ctrl / ⌘ + Shift + Z 重做 · Esc 关闭菜单</p><p><b>数据与连接</b><br>文档默认只存本机。翻译或问答时将选定文本 / 文档发送给所选服务商。在线词典使用 Free Dictionary、Wiktionary，并支持 FreeDictionaryAPI、3325 备选及客户端有道；英文详细释义通过基础翻译 API 转成中文。基础翻译支持 MyMemory、Google 和三家云 API，可在“基础翻译功能”中配置，存在网络与额度限制。</p><p><b>开源致谢</b><br>PDF.js · pdf-lib · KaTeX · Lucide · Fluent Emoji · Noto Sans<br>设置及存档流程继承海姆休息室（https://fritia.online）。</p></div>`;
     }
     bindSelects(content);
   };
@@ -371,7 +394,7 @@ export async function onboarding(app) {
     if (step === 0)
       root.innerHTML = `<div class="welcome"><div class="welcome-symbol">${icon('book-open')}</div><p class="eyebrow">READ BEYOND LANGUAGE</p><h2>纸间 · 文献翻译 &amp; AI 分析</h2><p>LLM 划词翻译 | PDF 标注编辑 | AI 文献问答<br>青尘工作室　<a href="https://space.bilibili.com/385556208" target="_blank" rel="noopener noreferrer" data-author-link>@CyanDust_青尘</a>　出品</p><div class="welcome-features"><span>${icon('shield-check')}文档本地保存</span><span>${icon('languages')}即开即用词典</span></div></div><div class="onboarding-actions welcome-actions">${button('skip', 'arrow-up-right', '直接进入 APP')}${button('next', 'sparkles', '配置我的 AI', 'primary')}</div>`;
     else
-      root.innerHTML = `<div class="step-label">01 选择服务商 <span>→</span> 02 填写连接 <span>→</span> 03 开始阅读</div><div class="preset-grid">${PROVIDERS.map((p) => `<button class="preset ${p.id === preset.id ? 'active' : ''}" data-preset="${p.id}">${providerLogo(p.id)}<span>${p.name}</span></button>`).join('')}</div><form id="onboarding-form"><label class="field"><span>Base URL</span><input name="baseUrl" type="url" value="${esc(preset.baseUrl)}" required></label><label class="field"><span>API Key</span><input name="apiKey" type="password" placeholder="从服务商控制台获取，本地模型可留空" autocomplete="new-password"></label><label class="field"><span>模型名称</span><input name="model" value="${esc(preset.model)}" placeholder="填写服务商提供的模型 ID" required></label><p class="note" id="onboarding-status">之后可在设置中添加更多 API、调整文件输入能力。</p><div class="onboarding-actions">${button('back', 'arrow-left', '返回')}${button('test', 'refresh-cw', '测试连接')}<button type="submit" class="button primary">${icon('check')}保存并开始</button></div></form>`;
+      root.innerHTML = `<div class="step-label">01 选择服务商 <span>→</span> 02 填写连接 <span>→</span> 03 开始阅读</div><div class="preset-grid">${PROVIDERS.map((p) => `<button class="preset ${p.id === preset.id ? 'active' : ''}" data-preset="${p.id}">${providerLogo(p.id)}<span>${p.name}</span></button>`).join('')}</div><form id="onboarding-form"><label class="field"><span>Base URL</span><input name="baseUrl" type="url" value="${esc(preset.baseUrl)}" required></label><label class="field"><span>API Key</span><div class="input-row api-key-row"><input name="apiKey" type="password" placeholder="从服务商控制台获取，本地模型可留空" autocomplete="new-password">${button('get-api-key', 'external-link', '获取')}</div></label><label class="field"><span>模型名称</span><div class="input-row"><input name="model" value="${esc(preset.model)}" placeholder="填写服务商提供的模型 ID" required>${iconButton('list-models', 'refresh-cw', '获取模型列表')}</div></label><p class="note" id="onboarding-status">之后可在设置中添加更多 API、调整文件输入能力。</p><div class="onboarding-actions">${button('back', 'arrow-left', '返回')}${button('test', 'refresh-cw', '测试连接')}<button type="submit" class="button primary">${icon('check')}保存并开始</button></div></form>`;
     root.querySelector('[data-author-link]')?.addEventListener('click', (event) => {
       event.preventDefault();
       openExternalWebsite(event.currentTarget.href).catch((error) => toast(errorMessage(error), 'error'));
@@ -401,6 +424,8 @@ export async function onboarding(app) {
       ...Object.fromEntries(new FormData(root.querySelector('form'))),
       id: uid(),
     });
+    const form = root.querySelector('form');
+    if (form) bindProviderActions(form, provider);
     root.querySelector('[data-action="test"]')?.addEventListener('click', async (event) => {
       event.currentTarget.disabled = true;
       const status = root.querySelector('#onboarding-status');
@@ -423,6 +448,8 @@ export async function onboarding(app) {
         await saveSettings({
           chatProviders: [...old.chatProviders, p],
           defaultChatProviderId: p.id,
+          translationEngine: 'llm',
+          translationProviderId: p.id,
           onboardingDone: true,
           hideOnboarding: preference.checked,
         });

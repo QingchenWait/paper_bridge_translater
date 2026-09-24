@@ -1,5 +1,12 @@
 import { all, get, put, patch, contextDocument } from '../storage.js';
-import { getSettings, saveBasicTranslation, getProvider } from '../settings.js';
+import { getSettings, getProvider } from '../settings.js';
+import {
+  translationEngines,
+  translationEngineValue,
+  saveTranslationEngine,
+  engineMenu,
+  engineTrigger,
+} from './translation-engine.js';
 import { requestLlm } from '../llm.js';
 import { cleanPdfText, isSingleWord, CLEANING_INSTRUCTIONS } from '../text.js';
 import { lookupWord, onlineTranslate, LANGUAGES } from '../translation.js';
@@ -48,9 +55,12 @@ export class Assistant {
         }),
     );
     document.getElementById('translation-settings').onclick = () => this.settings();
+    document.addEventListener('settings-changed', (event) => this.renderEngine(event.detail));
   }
   async render() {
     const epoch = ++this.epoch;
+    this.renderEngine(await getSettings());
+    if (epoch !== this.epoch) return;
     document.querySelectorAll('[data-assistant-tab]').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.assistantTab === this.tab);
       btn.setAttribute('aria-selected', String(btn.dataset.assistantTab === this.tab));
@@ -58,6 +68,36 @@ export class Assistant {
     if (this.tab === 'selection') this.renderSelection();
     if (this.tab === 'full') await this.renderFull(epoch);
     if (this.tab === 'chat') await this.renderChat(epoch);
+  }
+  renderEngine(settings) {
+    const host = document.getElementById('selection-engine');
+    host.hidden = this.tab !== 'selection';
+    if (host.hidden) {
+      host.replaceChildren();
+      return;
+    }
+    const engines = translationEngines(settings),
+      value = translationEngineValue(settings);
+    const signature = JSON.stringify([engines, value]);
+    if (host.dataset.signature === signature && host.childElementCount) return;
+    const focused = host.contains(document.activeElement);
+    host.dataset.signature = signature;
+    host.innerHTML = engineMenu(engines, value);
+    bindSelects(host);
+    if (focused) host.querySelector('.select-trigger').focus({ preventScroll: true });
+    host.querySelector('.custom-select').addEventListener('valuechange', async (event) => {
+      const current = engines.find((engine) => engine.key === event.detail);
+      const trigger = host.querySelector('.select-trigger');
+      trigger.innerHTML = engineTrigger(current);
+      trigger.title = current.name;
+      try {
+        await saveTranslationEngine(event.detail);
+      } catch (error) {
+        delete host.dataset.signature;
+        this.renderEngine(await getSettings());
+        toast(errorMessage(error), 'error');
+      }
+    });
   }
   renderSelection() {
     const entry = this.selections.get(this.app.activeId);
@@ -202,25 +242,20 @@ export class Assistant {
   }
   async settings() {
     const settings = await getSettings();
+    const showEngine = this.tab !== 'selection';
     const dialog = anchoredPopover(
       document.getElementById('translation-settings'),
       '翻译设置',
-      `<div class="settings-form"><div class="field"><span>翻译引擎</span>${select(
-        'translation-engine',
-        [
-          ...basicOptions(settings.basicTranslation).map(([id, name]) => [
-            id === 'mymemory' ? 'online' : `basic:${id}`,
-            id === 'mymemory' ? 'MyMemory · 在线翻译' : name,
-          ]),
-          ...settings.chatProviders.map((p) => [`llm:${p.id}`, `${p.name} · ${p.model || 'LLM'}`]),
-        ],
-        settings.translationEngine === 'online'
-          ? settings.basicTranslation.defaultProvider === 'mymemory'
-            ? 'online'
-            : `basic:${settings.basicTranslation.defaultProvider}`
-          : `llm:${settings.translationProviderId || settings.defaultChatProviderId}`,
-        '翻译引擎',
-      )}</div><div class="field-pair"><div class="field"><span>原文语言</span>${select('source-language', LANGUAGES, settings.sourceLanguage, '原文语言')}</div><div class="field"><span>目标语言</span>${select('target-language', LANGUAGES, settings.targetLanguage, '目标语言')}</div></div><div class="field"><span>翻译风格</span>${select(
+      `<div class="settings-form">${
+        showEngine
+          ? `<div class="field"><span>翻译引擎</span>${select(
+              'translation-engine',
+              translationEngines(settings).map((engine) => [engine.key, engine.name]),
+              translationEngineValue(settings),
+              '翻译引擎',
+            )}</div>`
+          : ''
+      }<div class="field-pair"><div class="field"><span>原文语言</span>${select('source-language', LANGUAGES, settings.sourceLanguage, '原文语言')}</div><div class="field"><span>目标语言</span>${select('target-language', LANGUAGES, settings.targetLanguage, '目标语言')}</div></div><div class="field"><span>翻译风格</span>${select(
         'translation-style',
         [
           ['学术论文', '学术论文'],
@@ -235,25 +270,11 @@ export class Assistant {
     dialog.element.querySelector('[data-action="save-translation"]').onclick = async () => {
       try {
         const engine = selected('translation-engine');
-        await saveBasicTranslation(
-          (current) => ({
-            ...current,
-            defaultProvider: engine?.startsWith('basic:')
-              ? engine.slice(6)
-              : engine === 'online'
-                ? 'mymemory'
-                : current.defaultProvider,
-          }),
-          {
-            translationEngine: engine?.startsWith('llm:') ? 'llm' : 'online',
-            translationProviderId: selected('translation-engine')?.startsWith('llm:')
-              ? selected('translation-engine').slice(4)
-              : settings.translationProviderId,
-            sourceLanguage: selected('source-language'),
-            targetLanguage: selected('target-language'),
-            translationStyle: selected('translation-style'),
-          },
-        );
+        await saveTranslationEngine(engine, {
+          sourceLanguage: selected('source-language'),
+          targetLanguage: selected('target-language'),
+          translationStyle: selected('translation-style'),
+        });
         dialog.close();
         toast('翻译设置已保存');
       } catch (e) {

@@ -61,6 +61,29 @@ export function providerKeyUrl(baseUrl) {
   }
 }
 
+// Saved provider IDs are UUIDs; identify branding without changing their identity.
+export function providerBrand(provider = {}) {
+  try {
+    const host = new URL(provider.baseUrl).host;
+    const preset = PROVIDERS.find((p) => p.baseUrl && new URL(p.baseUrl).host === host);
+    if (preset) return preset.id;
+  } catch {
+    /* Custom endpoints may still use a recognizable model name. */
+  }
+  const names = `${provider.model || ''} ${provider.name || ''}`.toLowerCase();
+  return (
+    [
+      ['deepseek', /deepseek/],
+      ['mimo', /mimo/],
+      ['qwen', /qwen|通义/],
+      ['openai', /openai|\bgpt-|\bo[134]-/],
+      ['glm', /\bglm|智谱/],
+      ['kimi', /kimi|moonshot/],
+      ['lmstudio', /lm\s*studio/],
+    ].find(([, pattern]) => pattern.test(names))?.[0] || 'custom'
+  );
+}
+
 export async function openProviderWebsite(baseUrl) {
   const url = providerKeyUrl(baseUrl);
   if (!url) return;

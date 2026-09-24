@@ -319,7 +319,7 @@ export class PdfViewer {
     ink.className = 'ink-layer';
     ink.width = canvas.width;
     ink.height = canvas.height;
-    shell.replaceChildren(canvas, annotations, search, text, ink);
+    shell.replaceChildren(canvas, annotations, search, ink);
     const task = page.render({
       canvasContext: canvas.getContext('2d'),
       viewport,
@@ -336,8 +336,12 @@ export class PdfViewer {
     }
     if (generation !== this.generation || !canvas.isConnected) return;
     const content = await this.getPageContent(number);
-    const layer = await renderAlignedText(page, content, text, viewport);
-    if (generation !== this.generation || !canvas.isConnected) return;
+    const layer = await renderAlignedText(page, content, text, viewport, () => {
+      if (generation !== this.generation || !canvas.isConnected) return false;
+      ink.before(text);
+      return true;
+    });
+    if (!layer || generation !== this.generation || !canvas.isConnected) return;
     this.textLayers.set(number, layer);
     this.drawSearchMatches(number);
     this.drawAnnotations(number);

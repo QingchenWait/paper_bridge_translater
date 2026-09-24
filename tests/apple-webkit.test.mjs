@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applePlatform } from '../src/js/compat/apple-webkit.js';
-import { installStreamIterator, installPromiseResolvers } from '../src/js/compat/apple-streams.js';
+import { installStreamIterator, installPromiseResolvers } from '../src/js/compat/pdf-runtime.js';
 test('Apple WebKit rules include iPad desktop mode and iOS browsers, but exclude macOS Chrome', () => {
   for (const navigator of [
     {

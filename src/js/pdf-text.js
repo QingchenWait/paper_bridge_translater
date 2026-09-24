@@ -1,7 +1,7 @@
 import { getPdfEngine } from './pdf-engine.js';
 
 // Canvas and HTML must share fonts, language and the exact page coordinate space.
-export async function renderAlignedText(page, content, container, viewport) {
+export async function renderAlignedText(page, content, container, viewport, mount) {
   const { TextLayer, Util } = await getPdfEngine();
   const styles = {};
   const fonts = new Map();
@@ -24,6 +24,10 @@ export async function renderAlignedText(page, content, container, viewport) {
   container.style.setProperty('--total-scale-factor', unitScale);
   const layer = new TextLayer({ textContentSource: layerContent, container, viewport });
   await layer.render();
+  // Populate off-DOM, then mount once before measuring real CSS metrics. In
+  // Firefox, alternating connected span appends and canvas font measurement
+  // inside TextLayer also forces layout for every text fragment.
+  if (mount && !mount()) return null;
   // Avoid CSS round()/missing custom-property fallback and unrotated dimensions.
   container.style.width = `${viewport.rawDims.pageWidth * unitScale}px`;
   container.style.height = `${viewport.rawDims.pageHeight * unitScale}px`;
@@ -42,20 +46,28 @@ export async function renderAlignedText(page, content, container, viewport) {
   const measurements = new Map();
   const { pageWidth, pageHeight, pageX, pageY } = viewport.rawDims;
   const transform = [1, 0, 0, -1, -pageX, pageY + pageHeight];
+  const minSize = parseFloat(container.style.getPropertyValue('--min-font-size')) || 1;
+  // Snapshot every layout-dependent value before changing any geometry. Alternating
+  // css.width reads with left/top writes forces a whole text-layer layout per span.
+  const metrics = items.map((item, i) => {
+    if (!item.str) return null;
+    const css = getComputedStyle(spans[i]);
+    return {
+      fontSize: parseFloat(css.fontSize),
+      width: parseFloat(css.width),
+      font: `${css.fontStyle} ${css.fontWeight} ${css.fontSize} ${css.fontFamily}`,
+    };
+  });
   items.forEach((item, i) => {
     const span = spans[i];
     if (!item.str) return;
-    const css = getComputedStyle(span);
-    const fontSize = parseFloat(css.fontSize);
-    const minSize = parseFloat(container.style.getPropertyValue('--min-font-size')) || 1;
-    const measuredWidth = parseFloat(css.width);
+    const { fontSize, width: measuredWidth, font } = metrics[i];
     const style = styles[item.fontName];
     if (measuredWidth > 0 && item.width > 0)
       span.style.setProperty(
         '--scale-x',
         ((style.vertical ? item.height : item.width) * unitScale * minSize) / measuredWidth,
       );
-    const font = `${css.fontStyle} ${css.fontWeight} ${fontSize}px ${css.fontFamily}`;
     let baseline = measurements.get(font);
     if (baseline === undefined) {
       ctx.font = font;

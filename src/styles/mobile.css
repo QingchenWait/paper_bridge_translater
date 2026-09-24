@@ -806,3 +806,21 @@
     min-height: 2.7rem;
   }
 }
+@media (max-width: 960px) {
+  .selection-engine .select-trigger {
+    min-width: 2.5rem;
+    min-height: 2.7rem;
+    justify-content: center;
+  }
+  .selection-engine .select-menu button {
+    min-height: 2.5rem;
+  }
+  @container assistant (max-width: 28rem) {
+    .selection-engine .engine-kind {
+      display: none;
+    }
+    .assistant-header-actions {
+      gap: 0.1rem;
+    }
+  }
+}

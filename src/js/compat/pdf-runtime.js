@@ -1,5 +1,5 @@
 // PDF.js legacy includes ECMAScript polyfills, but not this Web Streams method.
-// Install only in the Apple compatibility realm (window and its PDF worker).
+// Shared by the main window and the compatible PDF worker on every platform.
 export function installPromiseResolvers(PromiseClass = globalThis.Promise) {
   if (typeof PromiseClass.withResolvers === 'function') return;
   Object.defineProperty(PromiseClass, 'withResolvers', {
@@ -15,7 +15,7 @@ export function installPromiseResolvers(PromiseClass = globalThis.Promise) {
     },
   });
 }
-export function installAppleRuntime() {
+export function installPdfRuntime() {
   installPromiseResolvers();
   installStreamIterator();
 }

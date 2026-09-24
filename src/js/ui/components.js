@@ -18,8 +18,10 @@ export const button = (action, name, label, className = '') =>
   `<button type="button" class="button ${className}" data-action="${action}">${icon(name)}<span>${label}</span></button>`;
 export const iconButton = (action, name, label, className = '') =>
   `<button type="button" class="icon-button ${className}" data-action="${action}" title="${esc(label)}" aria-label="${esc(label)}">${icon(name)}</button>`;
-export function select(id, options, value, label = '', className = '') {
-  const selected = options.find((option) => String(option[0]) === String(value)) || options[0];
+export function select(id, options, value, label = '', className = '', fallbackLabel) {
+  const selected =
+    options.find((option) => String(option[0]) === String(value)) ||
+    (fallbackLabel === undefined ? options[0] : [value, fallbackLabel]);
   return `<div class="custom-select ${className}" data-select="${id}" data-value="${esc(selected?.[0] || '')}"><button type="button" class="select-trigger" aria-label="${esc(label || id)}" aria-haspopup="listbox" aria-expanded="false"><span>${esc(selected?.[1] || '请选择')}</span>${icon('chevron-down')}</button><div class="select-menu" role="listbox" aria-label="${esc(label || id)}" hidden>${options.map(([key, text]) => `<button type="button" role="option" aria-selected="${String(key) === String(selected?.[0])}" data-value="${esc(key)}">${esc(text)}</button>`).join('')}</div></div>`;
 }
 export const selected = (id) => document.querySelector(`[data-select="${id}"]`)?.dataset.value;
@@ -35,7 +37,8 @@ export function bindSelects(root = document) {
       trigger.setAttribute('aria-expanded', String(open));
       if (open) {
         const portal = openAppleMenu(element, trigger, menu);
-        menu.querySelector('[aria-selected="true"]')?.focus(portal ? { preventScroll: true } : undefined);
+        const option = menu.querySelector('[aria-selected="true"]') || menu.querySelector('[role="option"]');
+        option?.focus(portal ? { preventScroll: true } : undefined);
       }
     };
     menu.onclick = (event) => {

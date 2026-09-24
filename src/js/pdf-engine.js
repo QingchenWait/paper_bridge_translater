@@ -1,17 +1,19 @@
-import { apple, loadApplePdfEngine } from './compat/apple-webkit.js';
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { installPdfRuntime } from './compat/pdf-runtime.js';
 let pending;
 export function getPdfEngine() {
-  // Keep PDF.js out of application startup. Only the selected engine is evaluated.
-  return (pending ||= (
-    apple.webkit
-      ? loadApplePdfEngine()
-      : import('pdfjs-dist').then((engine) => {
-          engine.GlobalWorkerOptions.workerSrc = workerUrl;
-          return engine;
-        })
-  ).catch((error) => {
-    pending = null;
-    throw error;
-  }));
+  installPdfRuntime();
+  // The same upstream compatibility build supplies missing ECMAScript methods
+  // in BOTH realms; no UA whitelist or catch-and-retry after rendering fails.
+  return (pending ||= Promise.all([
+    import('pdfjs-dist/legacy/build/pdf.mjs'),
+    import('./compat/pdf.worker.js?worker&url'),
+  ])
+    .then(([engine, worker]) => {
+      engine.GlobalWorkerOptions.workerSrc = worker.default;
+      return engine;
+    })
+    .catch((error) => {
+      pending = null;
+      throw error;
+    }));
 }

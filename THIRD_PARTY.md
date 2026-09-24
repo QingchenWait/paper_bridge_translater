@@ -7,7 +7,7 @@
 | `D:/Models/vibe_coding/fritia_online_next_chat/src/js/settings.js` | 多 API 字段兼容、provider 规范化思路，改编至 `settings.js` | GPL-3.0 |
 | 同项目 `onboarding.js` | 选择服务商→填配置→测试→保存的引导流程，适配为 PDF 场景 | GPL-3.0 |
 | 同项目 `archive_sync.js` | 备份/WebDAV/CORS/定时同步流程，重写为 PDF 数据库事务合并 | GPL-3.0 |
-| [PDF.js](https://mozilla.github.io/pdf.js/examples/) | 渲染、文本提取、选择层及文字层 CSS；Apple WebKit 使用同包 legacy 构建及配套 Worker | Apache-2.0；版本由 package-lock 固定 |
+| [PDF.js](https://mozilla.github.io/pdf.js/examples/) | 渲染、文本提取、选择层及文字层 CSS；所有平台使用同包 legacy 构建及匹配 Worker | Apache-2.0；版本由 package-lock 固定 |
 | [core-js 3.50.0](https://github.com/zloirock/core-js/tree/v3.50.0) | PDF.js legacy 自带的 ECMAScript 兼容实现，无独立新增 npm 依赖 | MIT；原始许可证见 public/licenses/CORE-JS.txt |
 | [pdf-lib](https://pdf-lib.js.org/) | 修改和生成 PDF | MIT |
 | [@pdf-lib/fontkit](https://github.com/Hopding/fontkit/blob/master/src/subset/CFFSubset.js) | Noto 字体子集；pdf-fonts.js 对已安装 1.1.1 的 CFF 编码作局部兼容适配 | MIT；Devon Govett / Andrew Dillon，见 public/licenses/FONTKIT.txt |
@@ -22,7 +22,11 @@
 
 素材下载脚本为 `tools/download-assets.ps1`。源图标并未重绘；CSS 只调整显示尺寸、颜色滤镜和透明度。UI 参考图和规则来自用户提供的 `src/ui_rules`。
 
+v0.3.3 从同一 Lobe Icons 固定提交下载 `meta-color`、`google-color`、`baidu-color`、`alibabacloud-color`、`volcengine-color`，原始 SVG 分别保存为 src/_logo/llms/meta、google、baidu、aliyun、volcengine.svg，沿用 LOBE-ICONS-LICENSE。MyMemory 按用户指定使用 Meta 彩色图标，仅为本应用的显示映射，不代表两家服务的归属关系。
+
 ## PDF 注释参考与验证
+
+- [PDF.js 官方浏览器兼容说明](https://github.com/mozilla/pdf.js/wiki/Frequently-Asked-Questions#which-browsersenvironments-are-supported)：常规构建面向最新浏览器，legacy 构建提供转换及能力补齐。本项目复用相同锁定版本的 legacy/core-js，修正原先只在 Apple 启用、遗漏 Chromium 142 的能力覆盖；没有修改上游包或降低 PDF 版本。
 
 - [Adobe 发布的 ISO 32000-1 PDF 参考](https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf)，12.5.6.10 / 12.5.6.13 / 12.5.6.14：文字标记注释、Contents、QuadPoints、Ink/InkList 和 Popup/Parent。
 - [Adobe CFF 格式规范](https://adobe-type-tools.github.io/font-tech-notes/pdfs/5176.CFF.pdf)：文件头 offSize 合法范围、FDArray/FDSelect、局部 Subrs。与上游 CFFSubset.js 源码对照，修复原 Noto 字体子集编码，未更换字体。

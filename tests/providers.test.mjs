@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PROVIDERS, providerKeyUrl, openProviderWebsite } from '../src/js/providers.js';
+import { PROVIDERS, providerKeyUrl, providerBrand, openProviderWebsite } from '../src/js/providers.js';
 import { normalizeSettings } from '../src/js/settings.js';
 
 test('provider templates use the requested values without changing saved configurations', () => {
@@ -47,6 +47,14 @@ test('key links only map recognized hosts to fixed official pages', () => {
     'https://unknown.test',
   ])
     assert.equal(providerKeyUrl(url), null);
+});
+
+test('branding follows saved endpoint or proxied model without changing provider identity', () => {
+  for (const preset of PROVIDERS.filter((p) => p.baseUrl))
+    assert.equal(providerBrand({ ...preset, id: 'arbitrary-id', name: 'Renamed' }), preset.id);
+  assert.equal(providerBrand({ baseUrl: 'https://proxy.test/v1', model: 'deepseek-v4-flash' }), 'deepseek');
+  assert.equal(providerBrand({ model: 'qwen3.8-flash' }), 'qwen');
+  assert.equal(providerBrand({ baseUrl: 'invalid', model: 'unknown-model' }), 'custom');
 });
 
 test('key links open a new browser tab or use the native default-browser opener', async () => {

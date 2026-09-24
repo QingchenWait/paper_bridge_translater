@@ -225,3 +225,11 @@
     padding-inline: 0.8rem;
   }
 }
+@media (min-width: 961px) {
+  @container assistant (max-width: 30rem) {
+    .selection-engine .engine-kind,
+    .assistant-header-actions .translation-settings span {
+      display: none;
+    }
+  }
+}

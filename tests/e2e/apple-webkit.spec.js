@@ -69,7 +69,7 @@ for (const mode of modes)
         buffer: Buffer.from(await pdf.save()),
       });
       await expect(page.locator('.textLayer span').first()).toBeVisible();
-      expect(workers.some((url) => url.includes('apple-pdf.worker'))).toBe(true);
+      expect(workers.some((url) => url.includes('pdf.worker'))).toBe(true);
       await expect(page.locator('.toast.error')).toHaveCount(0);
       const first = page.locator('.pdf-page[data-page="1"]');
       const width = await first.evaluate((el) => el.getBoundingClientRect().width);

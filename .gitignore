@@ -4,3 +4,4 @@ dist/
 test-results/
 playwright-report/
 *.log
+tests/1-s2.0-S0950705126003436-main.pdf

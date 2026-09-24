@@ -1,5 +1,30 @@
 # 开发记录
 
+## v0.3.3 同版本修订 · PDF 密集文字性能与通用运行时兼容 · 2026-09-24
+
+复现样本 `tests/1-s2.0-S0950705126003436-main.pdf` 为 13 页、约 3.4 MiB；页面包含约 765–3532 个文字片段。问题来自文字层重复同步布局，不取决于文件页数或总大小。
+
+- 根因一：`renderAlignedText` 每读取一个 span 的 computed width，就写回 scale/left/top，下一次读取强制重排。改为先快照所有数值和字体字符串，再批量写回；不能保存活的 CSSStyleDeclaration 代替快照，否则后续读取仍会触发布局。原字宽、字体/基线、旋转/裁切/UserUnit 校准算法保留。
+- 根因二：Firefox 在官方 TextLayer 的逐节点 append 与 Canvas 字体测量交替时也触发布局。`paintPage` 先保留 canvas/标注/搜索/ink，TextLayer 在脱离 DOM 的 text 容器中构建，通过 mount 回调只挂载一次，再读取真实 CSS 尺寸。回调检查渲染代数和画布连接状态，丢弃被缩放/切换/虚拟化取消的旧文字层。
+- 同机同尺寸、同样本前十页的 Chromium 性能采样：LayoutCount 17893→61，LayoutDuration 20.113s→0.200s，累计 TaskDuration 25.135s→1.362s，最长主线程任务 4144ms→68ms。逐页等待由约 2–4 秒降到约 14–183ms（预渲染和调度会影响单页等待）。Firefox 最密集页官方文字层构建约 897ms→21ms。数值为本机样本测量，不是所有设备/文件的性能保证；原清晰度及像素预算不变。
+- 白屏根因：PDF.js 6.3.289 常规构建依赖新 Map/WeakMap 等 API，原本仅 Apple 被分配兼容构建，Chromium 142 缺少同一能力却没有补齐。`pdf-engine.js` 统一按需加载同一版本官方 legacy 构建和匹配 Worker，在两个执行环境中由上游 core-js 提供标准方法；不依赖 UA 白名单、不替换 PDF 引擎版本、不吞掉报错重试。已用 Chrome for Testing 142.0.7444.175 确认原生 Map/WeakMap.getOrInsertComputed 均不存在，修复后样本 13 页正常渲染。
+- 原 `apple-streams.js` 移为 `compat/pdf-runtime.js`，`installPdfRuntime` 仅补齐缺失 Promise.withResolvers / ReadableStream 异步迭代；原 `apple-pdf.worker.js` 移为 `compat/pdf.worker.js`。Apple 文件仅保留平台绘图参数、画布回收、触控和菜单规则。通用能力与平台交互规则分离，不再同时打包常规/legacy 两套引擎。
+- 新增 `pdf-performance.spec.js`：样本全页滚动、布局次数上限、Firefox 事件循环响应、独立 Worker 缺失 API 的真实注入/恢复。样本由用户提供，未放入发布目录；浏览器测试使用临时资料。版本仍 0.3.3，数据库、存档和 npm 依赖不变。
+
+验证通过：语法检查、76 项单元、101 项浏览器回归（完整运行 100 项通过；Firefox 新用例因继承 Chrome executablePath 未启动，明确 Firefox 路径后 3 项性能/兼容定点复测全部通过）。原 25%–400% 选区精度、旋转/裁切、嵌入中文字体、笔迹/文本编辑、导出、存档与翻译均通过。独立 Chrome for Testing 142.0.7444.175 与 Firefox 155 验证样本全 13 页、缩放与选词；Chrome 142、WebKit 18.4 的生产子路径/Worker/中文导出/恢复检查通过，WebKit 26.6 的桌面/iPad/iPhone 用例通过。测试引擎不等同于用户的 142.0.3595.53 精确发行版或所有真机；原生缺失能力另在主线程和 Worker 中主动移除后验证恢复。最终 dist 共 283 文件、约 16.5 MiB，相比双引擎方案减少约 1.6 MiB；PDF 样本、浏览器安装、性能 profile 均留在测试或缓存目录，不进入发布。原 5173 服务保留，前一轮 v0.3.3 未提交改动未被覆盖。
+
+## v0.3.3 · 翻译引擎快捷入口与启动配置 · 2026-09-24
+
+范围限定为右栏引擎入口、缩放菜单、启动配置辅助按钮及首次默认引擎；不迁移数据库或存档格式，不更新运行依赖。
+
+- `ui/translation-engine.js` 统一枚举和保存现有引擎，复用 basicOptions 与串行 saveBasicTranslation；划词页按机翻/AI 分组显示，类型标题采用紧凑行高。Assistant.renderEngine 响应设置变化，只在数据变化时重绘，保留键盘焦点。语言/风格保存时没有引擎字段则保留当前选择，避免把 LLM 错重置为机翻。全文/问答页沿用原浮层引擎样式及各任务独立 API 选择。
+- `providerBrand` 从服务地址或代理模型名称识别图标，不修改保存的 API 身份或名称。下载同一固定版本 Lobe Icons 的 Google、Meta、百度、阿里云、火山 LOGO；MyMemory 使用指定 Meta 彩色标识。桌面和移动样式分别使用右栏容器宽度决定是否隐藏类型文字，图标与翻译设置主图标同为 1rem。
+- 通用 select 新增可选 fallbackLabel，仅缩放控件使用，以保留真实非标准 dataset.value/触发器比例；菜单固定七项，不添加临时比例，减号排在加号前。保留原缩放步长、范围和保存逻辑。
+- `bindProviderActions` 在设置和启动页共用当前 Base URL 对应官网、模型列表请求/填入行为。启动页不加眼睛按钮；异步模型响应在表单被替换或地址/Key 改变后不再填回旧结果。首次保存配置同时写入 translationEngine=llm 和 translationProviderId，跳过/关闭引导不修改默认值。
+- 包、锁文件、界面和文档统一 0.3.3；新增桌面/手机入口与配置、品牌识别和缩放回归，原翻译 API 测试随入口调整。
+
+验证通过：`npm run check`、76 项单元测试、独立 5193 端口完整 98 项浏览器回归、`npm run build`、Chromium 与 WebKit 的生产子路径检查。新增覆盖双组标题、Logo/类型/窄屏隐藏、页签回放浮层、语言风格保存不重置引擎、模型列表使用当前 Key、官网入口禁用/新标签打开、LM Studio、配置持久化、设置页共用按钮，以及 115% 实际显示/固定七项/减号在前/键盘焦点。桌面与手机菜单和引导截图已检查，最终 dist 为 285 个文件、约 18.1 MiB。接口请求使用可控响应，不读取用户真实 Key 或发起收费请求；原有 5173 开发服务保留。
+
 ## v0.3.2 同版本修订 · Apple WebKit 阅读兼容与绘图选区 · 2026-09-24
 
 范围限于 iOS/iPadOS/macOS Safari 的 PDF 渲染和触控交互、工具栏比例菜单，以及绘图时避免重复翻译。版本、数据库和存档结构不变，也未修改其他平台的绘图或布局规则。

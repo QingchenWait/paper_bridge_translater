@@ -592,10 +592,11 @@ test('translation popover anchors below its button and uses the selected API', a
     .toBeLessThan(0.5);
   const popup = await page.locator('.translation-popover').boundingBox();
   expect(popup.width).toBeLessThanOrEqual(360);
+  await expect(page.locator('.translation-popover [data-select="translation-engine"]')).toHaveCount(0);
+  await page.locator('[data-action="save-translation"]').click();
   await page.getByRole('button', { name: '翻译引擎', exact: true }).click();
   await expect(page.getByRole('option')).toHaveCount(4);
   await page.getByRole('option', { name: 'Second API · second-model', exact: true }).click();
-  await page.locator('[data-action="save-translation"]').click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await selectText(page, 'parallel computation');
   await expect(page.locator('#selection-result')).toContainText('第二个 API');
@@ -673,7 +674,6 @@ test('mobile selection remains available for annotations and compact translation
     .toBeGreaterThanOrEqual(44);
   await page.locator('[data-mobile-pane="assistant"]').click();
   await expect(page.locator('#selection-result')).toContainText('手机端译文');
-  await page.getByRole('button', { name: '翻译设置', exact: true }).click();
   await page.getByRole('button', { name: '翻译引擎', exact: true }).click();
   await expect(page.getByRole('option', { name: 'MyMemory · 在线翻译' })).toBeVisible();
   await page.screenshot({ path: 'test-results/mobile-translation-popover.png', animations: 'disabled' });

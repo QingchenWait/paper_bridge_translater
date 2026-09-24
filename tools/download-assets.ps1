@@ -17,7 +17,7 @@ Invoke-WebRequest 'https://raw.githubusercontent.com/lucide-icons/lucide/main/LI
 $logoDir = Join-Path $root 'src/_logo/llms'
 New-Item -ItemType Directory -Force $logoDir | Out-Null
 $logoRevision = '2e76c48721e91b9aaa40803a0fa2eb8aca7399c4'
-$providerLogos = @{'deepseek'='deepseek-color'; 'mimo'='xiaomimimo'; 'qwen'='qwen-color'; 'openai'='openai'; 'glm'='zhipu-color'; 'kimi'='kimi-color'; 'lmstudio'='lmstudio'}
+$providerLogos = @{'deepseek'='deepseek-color'; 'mimo'='xiaomimimo'; 'qwen'='qwen-color'; 'openai'='openai'; 'glm'='zhipu-color'; 'kimi'='kimi-color'; 'lmstudio'='lmstudio'; 'meta'='meta-color'; 'google'='google-color'; 'baidu'='baidu-color'; 'aliyun'='alibabacloud-color'; 'volcengine'='volcengine-color'}
 foreach ($key in $providerLogos.Keys) {
   Invoke-WebRequest "https://raw.githubusercontent.com/lobehub/lobe-icons/$logoRevision/packages/static-svg/icons/$($providerLogos[$key]).svg" -OutFile (Join-Path $logoDir "$key.svg")
 }

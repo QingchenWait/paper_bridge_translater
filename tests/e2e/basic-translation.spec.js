@@ -216,9 +216,9 @@ test('reader routes Google and each saved basic provider, switches Baidu by styl
     ['阿里云翻译 API', '阿里译文', '学术论文'],
     ['火山引擎翻译 API', '火山译文', '学术论文'],
   ]) {
-    await page.getByRole('button', { name: '翻译设置', exact: true }).click();
     await page.getByRole('button', { name: '翻译引擎', exact: true }).click();
     await page.getByRole('option', { name, exact: true }).click();
+    await page.getByRole('button', { name: '翻译设置', exact: true }).click();
     await page.getByRole('button', { name: '翻译风格', exact: true }).click();
     await page.getByRole('option', { name: style, exact: true }).click();
     await page.getByRole('button', { name: '保存', exact: true }).click();

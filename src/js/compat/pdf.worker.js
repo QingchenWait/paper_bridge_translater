@@ -1,4 +1,4 @@
-import { installAppleRuntime } from './apple-streams.js';
+import { installPdfRuntime } from './pdf-runtime.js';
 import { WorkerMessageHandler } from 'pdfjs-dist/legacy/build/pdf.worker.mjs';
-installAppleRuntime();
+installPdfRuntime();
 export { WorkerMessageHandler };

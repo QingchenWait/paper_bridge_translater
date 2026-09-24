@@ -1,5 +1,4 @@
 // Apple-only compatibility. Chromium on macOS must keep the ordinary path.
-import { installAppleRuntime } from './apple-streams.js';
 export function applePlatform(navigator = globalThis.navigator) {
   const ua = navigator?.userAgent || '',
     platform = navigator?.platform || '';
@@ -15,19 +14,8 @@ export const apple = applePlatform();
 export const applePdfOptions = apple.webkit
   ? { isOffscreenCanvasSupported: false, isImageDecoderSupported: false }
   : {};
-export async function loadApplePdfEngine() {
-  installAppleRuntime();
-  // Both realms need the upstream polyfills; a main-window Map shim alone is insufficient.
-  const [engine, worker] = await Promise.all([
-    import('pdfjs-dist/legacy/build/pdf.mjs'),
-    import('./apple-pdf.worker.js?worker&url'),
-  ]);
-  engine.GlobalWorkerOptions.workerSrc = worker.default;
-  return engine;
-}
 export function installAppleWebKit() {
   if (!apple.webkit) return;
-  installAppleRuntime();
   document.documentElement.dataset.appleWebkit = '';
   if (apple.touch) document.documentElement.dataset.appleTouch = '';
 }
