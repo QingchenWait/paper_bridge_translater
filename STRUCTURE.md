@@ -1,6 +1,6 @@
 # 项目结构与开发逻辑
 
-适用版本：0.3.3。入口为 `index.html` → `src/js/main.js`，浏览器标题为“纸间 · 文献翻译”。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
+适用版本：0.3.4。入口为 `index.html` → `src/js/main.js`，浏览器标题为“纸间 · 文献翻译”。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
 
 ## 文件树
 
@@ -68,6 +68,7 @@ pdf_translater/
 │  │     ├─ components.js          图标、按钮、下拉、弹窗、提示、输入框
 │  │     ├─ assistant.js           划词、全文、AI 会话与任务状态
 │  │     ├─ translation-engine.js  引擎枚举、分组菜单、品牌触发器及共享保存
+│  │     ├─ reading-fonts.js        三组阅读字号按钮、范围状态和显示比例应用
 │  │     ├─ library.js             文档管理卡片/列表、多选和操作弹窗
 │  │     ├─ open-pdf.js            打开三项菜单、文档树及外部链接导入弹窗
 │  │     ├─ pdf-navigation.js      缩略图、内置书签、目标解析及导航渲染生命周期
@@ -97,13 +98,15 @@ pdf_translater/
 │  ├─ dictionary-fallbacks.test.mjs 词性/子词义、中文转换、客户端识别与错误结构测试
 │  ├─ basic-translation.test.mjs   三家签名、响应、分段/取消、凭据存档和并发保存
 │  ├─ settings-persistence.test.mjs 自动保存交错写入、完整设置备份、清空 API 防复活
+│  ├─ reading-fonts.test.mjs       独立字号边界、并发保存、重载和无密钥存档恢复
 │  ├─ annotation-writes.test.mjs   原位写入顺序、事务回滚、删除保护和几何备份
 │  ├─ pdf-comments.test.mjs        PDF 标准注释/弹窗引用、Unicode 和换行规则
 │  ├─ pdf-fonts.test.mjs           新旧字体子集、连续编辑、字体名与映射保留
-│  ├─ pdf-links.test.mjs           链接后缀、协议、安全文件名与固定扩展名
+│  ├─ pdf-links.test.mjs           无后缀/参数链接、协议、安全文件名与固定扩展名
 │  ├─ selection-actions.test.mjs   选区规则、多类型/多页与局部清除测试
 │  ├─ save-file.test.mjs           单次保存、取消和写失败不重复下载测试
 │  ├─ shapes.test.mjs              形状几何、删除线及字号规则测试
+│  ├─ eraser.test.mjs              连续擦除轨迹、细线穿越、形状区域及容差边界
 │  ├─ search-geometry.test.mjs     搜索过滤、跨文本片段、移动边界与命中测试
 │  ├─ library.test.mjs             目录/删除边界、事务回滚、共享历史、ZIP 和冲突测试
 │  ├─ file-fingerprints.test.mjs   原始 MD5、分块/独立身份、旧记录补算/删除竞态与存档
@@ -112,6 +115,8 @@ pdf_translater/
 │     ├─ apple-webkit.spec.js      WebKit 桌面/iPad/iPhone 的渲染、翻页、缩放、触控编辑
 │     ├─ pdf-performance.spec.js   样本全页布局预算、Firefox 响应及窗口/Worker 缺失能力
 │     ├─ selection-editing.spec.js 绘图/编辑过程中不重复翻译旧选区
+│     ├─ eraser.spec.js            鼠标/触控连续多对象擦除、取消、撤销/重做和持久化
+│     ├─ annotation-defaults.spec.js 对象字号范围/独立默认值/滑块同步及查找高亮显隐
 │     ├─ app.spec.js               原有合成 PDF 的真实浏览器功能回归
 │     ├─ optimizations.spec.js     状态反馈、松手翻译、绘图尺寸和导航回归
 │     ├─ reader-refinements.spec.js 字形坐标、旋转/裁切、高 DPI、拖动/历史及搜索浮窗
@@ -123,7 +128,8 @@ pdf_translater/
 │     ├─ settings-autosave.spec.js 自动保存、即时备份、动画速度、桌面/手机启动页
 │     ├─ inline-annotations.spec.js 原位输入/宽度/工具、空对象、原生导出及紧凑控件
 │     ├─ v031.spec.js              打开菜单/链接/文档树、浮栏同步、原字体重复导出
-│     └─ v033.spec.js              引擎分组/页签位置、启动辅助按钮/默认及固定缩放
+│     ├─ v033.spec.js              引擎分组/页签位置、启动辅助按钮/默认及固定缩放
+│     └─ v034.spec.js              无后缀/重定向、菜单宽度、字号独立/边界/持久化/流式
 ├─ dist/                           构建产物，不手工编辑
 ├─ node_modules/                   npm 依赖，不手工编辑
 ├─ .cache/                         npm 缓存、开发期官方文档，不进入发布
@@ -161,6 +167,8 @@ pdf_translater/
 `status` 常见值：`streaming`、`complete`、`stopped`、`error`；从旧会话恢复的未完成 streaming 内容如实显示未完成，不在启动时批量篡改状态（避免影响另一个仍活动的窗口）。
 
 所有恢复冲突副本 ID 为 `原ID-recovery-更新时间`，相同旧版本只保留一次。批注副本也保留在数据库和页面，可通过撤销/编辑处理，不会丢掉已有内容。文件 Blob 不随 metadata 合并被覆盖。
+
+settings/app 新增 `readingFontSizes: {source,selection,full}`，值为各区域默认字号的百分比。默认 100，范围 70–180；按 APP 全局配置保存，不挂靠单个 PDF。普通备份/云同步均携带，导入需选择恢复设置。
 
 ## 内部模块 API / 函数
 
@@ -265,10 +273,13 @@ pdf_translater/
 
 ### text-annotations.js / annotation-writes.js
 
+- `TextAnnotations.rememberFontSize(type,size)`：仅由 action 的浮栏字号赋值调用，统一限制 6–48 pt，通知 viewer.callbacks.annotationFontSize 并返回尺寸值；保留对象原输入/尺寸模式和撤销历史。
+- `App.setAnnotationFontSize(type,size)`：同步 toolOptions.noteSize/textSize、viewer.drawingOptions，复用 saveToolOptions 保存 annotation-tools；使用既有 color-popover.dataset.tool 判断同类菜单，更新 #tool-size 并触发原 input 更新标签/进度。不修改其他类字号和颜色/笔宽偏好。
+
 - `TextAnnotations` 仅管理 note/text，复用 PdfViewer 的文档、批注数组、历史与绘制。active 区分 text 输入和 size 尺寸模式；跨页新批注初次输入共享文本，后续对象可独立修改。
 - `row/element/editing`：按稳定 ID 定位数据、DOM 和原位输入状态。`begin/activate/edit`：建立临时空对象或进入已有对象输入，清理 PDF 原选区并聚焦 textarea。
 - `select`：单击尺寸模式、触控同对象双点进入输入。`showToolbar`：尺寸模式四/五按钮，文字模式仅字号增减/删除三按钮。`finish`：结束输入/尺寸手势、移除浮栏 DOM，空内容标记删除，放弃空新建不产生有效历史；最终几何写入后可供导出等待。
-- `input/persist`：每次输入克隆数据并串行保存，一次文字编辑合为一条 before/after 历史；旧写入不会回填覆盖新输入。`action`：字号 ±1pt（6–144）、文本框 border 开关、删除 width 恢复自动、无确认删除。文字模式改字号合入当前会话历史，点击不移走输入焦点；删除先完成编辑再建立独立删除历史，撤销恢复最新文字。
+- `input/persist`：每次输入克隆数据并串行保存，一次文字编辑合为一条 before/after 历史；旧写入不会回填覆盖新输入。`action`：字号 ±1pt（6–48，且保存同类默认值）、文本框 border 开关、删除 width 恢复自动、无确认删除。文字模式改字号合入当前会话历史，点击不移走输入焦点；删除先完成编辑再建立独立删除历史，撤销恢复最新文字。
 - `render/fit`：保留正在输入的 DOM/光标；Canvas 字宽测量、textarea.scrollHeight 调整宽高；默认宽度最大页面 45%，width 存在表示手动归一化宽度，boxWidth/boxHeight 缓存实际几何。Enter 与原文选区分离，不调用翻译。
 - `resize`：左右手柄捕获鼠标/触控，左侧调整同时变更 x；范围不超页面，一次拖动一条历史，取消恢复 before。`positionToolbar`：浮栏作为对象子元素使用局部坐标，随对象同一次布局移动，无独立 fixed 跟随或位置过渡；滚动、尺寸变化时保持阅读视口内可操作。
 - `emphasize`：按指针与源文 rects 命中添加柔和发光，不创建可拦截取词的文字覆盖层。
@@ -297,6 +308,8 @@ pdf_translater/
 - `markdownToPdf(text,onProgress)`：离屏渲染译文，逐块/逐页生成 PDF；过高块分片，逐页释放画布。输出为栅格视觉 PDF。
 
 ### pdf.js
+
+- `PdfViewer.searchHighlightsVisible` / `setSearchHighlightsVisible(visible)`：仅控制 .search-highlights 的 hidden 属性，查询和 searchMatches 缓存不变；paintPage 新建搜索层时继承该标志。由 App.init 的既有 PdfNavigation.onMode 回调在 search 模式设为 true，其余页签/关闭设为 false。
 
 - `pdf-engine.getPdfEngine()`：首次打开 PDF 时加载同一版本的官方 legacy 主库及匹配 Worker，所有平台一致；上游 core-js 在窗口/Worker 中提供缺失 Map/WeakMap/Iterator 等标准能力，失败清空加载 Promise 以便重试。
 - `compat/apple-webkit.applePlatform()`：按 AppleWebKit UA、Mac/iPad 平台及触控能力选择专用交互规则；`installAppleWebKit` 仅设置 Apple 根节点标记；`applePdfOptions` 保留 Apple 图像解码参数；`releaseAppleCanvases` 在 Apple 切页/重排时释放旧画布。PDF JavaScript 能力补齐不再按此 UA 分流。
@@ -333,7 +346,9 @@ pdf_translater/
 - `drawAnnotations(page)`：重绘标记、批注同色锚点及形状命中区域；note/text DOM 交给原位控制器复用以保留光标。输入区、尺寸手柄和已有取词手势均不被普通拖动劫持。
 - `releaseTextSelection()`：指针和触控均已释放时移除 selecting-text；取词期间通过此类关闭所有覆盖元素 pointer-events，取消/窗口失焦也清理。
 - `beginShapeFromPointer(event)`：菜单在窗口 pointerdown 捕获阶段关闭并激活后，若原目标尚非墨迹层，转发首次按下到同页画布，保留首笔鼠标/触控绘制。
-- `bindInk(canvas,page)`：原手绘/形状创建保留；橡皮擦按笔迹线段或形状几何命中并删除整个对象，纳入历史。
+- `bindInk(canvas,page)`：保留原手绘/形状创建；橡皮擦记录 pointerId/documentId/generation 并捕获指针，通过 eraseSweep 检测前一点到当前点的完整轨迹，连续删除本页所有命中的 pen/shape。stopErasing 在松开/取消/失去捕获或上下文失效时终止；鼠标未按下的移动和其他触点不擦除。
+- `pendingEraseIds` / `eraserWrites`：避免异步落盘前反复命中同一对象，复用 writeAnnotations 的串行事务；成功后每对象加入独立历史，undo 等待在途擦除，失败保留原对象并报告错误。
+- `shapes.hitEraserSweep(annotation,from,to,width,height,tolerance)`：归一化坐标转页面点单位，使用线段相交/最短距离及矩形/圆形命中；默认由调用者传 18/scale，保护 note/text/文字标记，支持点点击与退化笔迹。
 
 ### pdf-text.js / pdf-search.js
 
@@ -440,6 +455,7 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 - `constructor` / `render`：绑定右栏标签，按渲染 epoch 防止旧异步视图覆盖新视图。
 - `renderEngine(settings)`：划词页更新顶部引擎，其他页隐藏；订阅 settings-changed，按内容签名去重，保存时保留焦点，失败恢复已持久化的选项。
 - `renderSelection` / `translateSelection`：内存缓存按文档分组；新选区取消旧请求；单词与句子严格分流。
+- `readingFonts`：render 读取 settings 后 update；renderSelection、renderFull、全文历史/流式挂载后 apply，控制三块独立字号，不触发翻译或重建整个助手视图。
 - `settings`：按钮下方的语言/风格浮层，仅全文/问答页另显示原样式的引擎下拉；与顶部引擎共用保存规则。
 - `renderFull` / `startFull`：全文参数、历史、按文档分组的独立任务、流式落盘和阶段反馈。
 - `setFullCollapsed(documentId,collapsed)`：首段译文保存后动画折叠参数；更新可展开的 sticky 进度栏，折叠内容 inert 防止焦点进入；手动展开不会在后续流式增量中重新折叠。
@@ -479,10 +495,17 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 
 ### pdf-links.js / ui/open-pdf.js
 
-- `parsePdfLink(value,rename?)`：校验 HTTP(S) 完整链接、禁止内嵌凭据、字面及 pathname 均须以 .pdf 结束（忽略大小写）；从重命名或解码 URL 文件名生成安全 basename，归一化固定 .pdf 后缀。返回 `{url,filename}`，不发网络请求。
+- `parsePdfLink(value,rename?)`：校验 HTTP(S) 完整链接、禁止内嵌凭据；允许无后缀、查询参数和片段，从重命名或解码 URL 末段生成安全 basename，补齐固定 .pdf 后缀。返回 `{url,filename}`，不发网络请求，是否为 PDF 由后续解析决定。
 - `OpenPdfMenu.toggle/close`：在触发按钮下方显示三项菜单，更新 ARIA、键盘焦点及左右视口约束，点击外部/Esc/尺寸改变时关闭；本地项同步触发已有文件输入。
 - `openLibrary`：读取目录/文档一致快照，复用 folder-tree 布局递归展示可折叠目录、文件按钮；按名称文件夹优先，避免循环，点击文件复用 app.openDocument，进行中禁止重复打开。
-- `openLink`：外部链接/重命名表单及只读后缀；禁用重复提交，fetch 60 秒超时、关闭取消、不携带凭据；下载结束后交给 importFiles 验证/密码流程并显式入根目录。失败不产生占位文件；成功打开沿用原阅读器和文档管理。
+- `openLink`：外部链接/重命名表单及只读后缀；禁用重复提交，fetch 60 秒超时、关闭取消、不携带凭据，正常跟随重定向；响应直接作为内存 Blob/File 交给 importFiles 验证/密码流程并显式入根目录，不触发本地下载/上传。失败不产生占位文件；成功打开沿用原阅读器和文档管理。
+
+### 阅读字号：settings.js / ui/reading-fonts.js
+
+- `READING_FONT_LIMITS` / `normalizeReadingFontSizes(raw)`：定义 70/180/10，校验并限制三组数值，旧配置回到 100。
+- `adjustReadingFontSize(area,direction)`：校验目标及正负方向，通过 saveSettings 函数更新在队列提交时读取最新值，保留其他区域及配置。
+- `readingFontButtons(area)`：生成缩小/加大两按钮，复用下载的 a-arrow-down/up，提供区域独立 ARIA 名称。
+- `ReadingFonts.constructor/update/apply`：在 assistant-content 委托一次点击，收到设置后更新 CSS --reading-font-scale 和 disabled。仅作用 source-text、selection-result、full-result；绝对内联字号用变量缩放一次，重绘不累乘。
 
 ### ui/pdf-navigation.js 的 PdfNavigation
 
@@ -522,6 +545,7 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 | .open-document-tree / .tree-document | 可折叠文档树、点击已有 PDF 打开 | OpenPdfMenu.openLibrary |
 | #external-pdf-form / .pdf-filename-field / .external-pdf-status | 链接、可选重命名及固定后缀、加载/错误反馈 | OpenPdfMenu.openLink / parsePdfLink |
 | #pdf-toolbar / [data-select=zoom] / #page-input | 阅读缩放、导航、编辑工具、颜色指示和导出 | App.renderToolbar |
+| .zoom-group .custom-select / .select-menu | 触发器宽度桌面 7rem、移动 6.3rem，展开菜单 8rem；不按选项文字自动收缩 | base.css / mobile.css（Apple portal 继承自身定位尺寸规则） |
 | [data-select=zoom] .select-trigger | 非标准比例由 select 的 fallbackLabel 显示，菜单固定七项；减号先于加号 | App.renderToolbar / components.select |
 | [data-action=thumbnails] / [data-action=bookmarks] / [data-action=search-pdf] / #pdf-navigation | 统一导航入口；桌面分栏或移动浮窗 | PdfNavigation / App |
 | .pdf-thumbnail / .pdf-bookmark | 缩略图跳页、显式/命名书签跳页 | PdfNavigation |
@@ -536,6 +560,8 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 | #document-status / #save-status | 页数、大小、本地提交状态 | App |
 | [data-assistant-tab] | 划词 / 全文 / AI 问答切换 | Assistant |
 | #translation-settings | 翻译引擎和风格设置浮层 | Assistant.settings |
+| [data-font-area=source/selection/full] / [data-font-direction] | 原文/划词译文/全文译文的独立字号增减，70%–180% 边界禁用 | ReadingFonts / adjustReadingFontSize |
+| .source-text / .reading-output / --reading-font-scale | 只缩放阅读内容及 Markdown/词典层级，聊天与导出不受影响 | reading-fonts.js / base.css / mobile.css |
 | #selection-engine / .engine-group-title / .engine-kind | 划词顶部引擎、机翻/AI 分组与随右栏宽度隐藏的类型文字 | Assistant.renderEngine / translation-engine.js / desktop.css / mobile.css |
 | #selection-result | 在线词典或句子结果，不持久化 | Assistant.renderSelection |
 | .dictionary-credit | 主要词典、中文词义与详细解释翻译来源、备选署名/词条/许可证；dictionaryLink 仅允许无凭据 HTTPS | Assistant.renderSelection / dictionaryLink |

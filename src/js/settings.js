@@ -2,6 +2,20 @@
 import { get, put } from './storage.js';
 import { normalizeBasicTranslation } from './basic-translation.js';
 export { PROVIDERS } from './providers.js';
+export const READING_FONT_LIMITS = { min: 70, max: 180, step: 10 };
+export function normalizeReadingFontSizes(raw = {}) {
+  return Object.fromEntries(
+    ['source', 'selection', 'full'].map((key) => {
+      const value = Number(raw?.[key]);
+      return [
+        key,
+        Number.isFinite(value) && value > 0
+          ? Math.max(READING_FONT_LIMITS.min, Math.min(READING_FONT_LIMITS.max, Math.round(value)))
+          : 100,
+      ];
+    }),
+  );
+}
 export function normalizeSettings(raw = {}) {
   const source = Array.isArray(raw.chatProviders)
     ? raw.chatProviders
@@ -44,6 +58,7 @@ export function normalizeSettings(raw = {}) {
     basicTranslation: normalizeBasicTranslation(raw.basicTranslation),
     translationProviderId: raw.translationProviderId || selected?.id || '',
     translationStyle: raw.translationStyle || '学术论文',
+    readingFontSizes: normalizeReadingFontSizes(raw.readingFontSizes),
     onboardingDone: raw.onboardingDone === true,
     hideOnboarding: raw.hideOnboarding === true,
     webdav: {
@@ -85,6 +100,17 @@ export function saveSettings(next) {
 }
 export function flushSettings() {
   return settingsSave;
+}
+export function adjustReadingFontSize(area, direction) {
+  if (!['source', 'selection', 'full'].includes(area) || ![-1, 1].includes(direction))
+    return Promise.reject(new Error('无效的阅读字号操作'));
+  // Merge at commit time so rapid clicks or other settings writes cannot lose a step.
+  return saveSettings((current) => ({
+    readingFontSizes: {
+      ...current.readingFontSizes,
+      [area]: current.readingFontSizes[area] + direction * READING_FONT_LIMITS.step,
+    },
+  }));
 }
 export function saveBasicTranslation(update, preferences = {}) {
   return saveSettings((current) => ({ ...preferences, basicTranslation: update(current.basicTranslation) }));

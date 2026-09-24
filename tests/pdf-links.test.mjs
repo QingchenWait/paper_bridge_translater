@@ -17,12 +17,20 @@ test('invalid links and path-like rename values are rejected before network requ
     'javascript:alert(1).pdf',
     'file:///a.pdf',
     'https://user:secret@example.test/a.pdf',
-    'https://example.test/a.pdf?key=x',
-    'https://example.test/a.pdf#page=1',
-    'https://example.test/page?x=a.pdf',
-    'https://example.test/a.txt',
-    'https://example.pdf',
   ])
     assert.throws(() => parsePdfLink(url));
   assert.throws(() => parsePdfLink('https://example.test/a.pdf', '../other'));
+});
+
+test('extensionless endpoints, query strings and fragments keep the URL and produce a safe PDF name', () => {
+  for (const [url, filename] of [
+    ['https://arxiv.org/pdf/2503.13443', '2503.13443.pdf'],
+    ['https://example.test/a.pdf?token=x#page=1', 'a.pdf'],
+    ['https://example.test/download?id=123', 'download.pdf'],
+    ['https://example.test/export.txt', 'export.txt.pdf'],
+    ['https://example.test/', '文档.pdf'],
+    ['https://example.test/%2e%2e%2fprivate', '.._private.pdf'],
+  ])
+    assert.deepEqual(parsePdfLink(url), { url, filename });
+  assert.equal(parsePdfLink('https://arxiv.org/pdf/2503.13443', '论文.PDF').filename, '论文.pdf');
 });

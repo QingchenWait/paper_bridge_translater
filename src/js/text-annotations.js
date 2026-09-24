@@ -198,6 +198,11 @@ export class TextAnnotations {
     for (const page of new Set(rows.map((row) => row.page))) this.viewer.drawAnnotations(page);
     active.action = this.persist(rows, active.before, active.action);
   }
+  rememberFontSize(type, size) {
+    const value = Math.max(6, Math.min(48, size));
+    this.viewer.callbacks.annotationFontSize?.(type, value);
+    return value;
+  }
   action(type) {
     const row = this.row();
     if (!row || !this.active) return;
@@ -212,9 +217,9 @@ export class TextAnnotations {
           rows = active.ids.map((id) => this.row(id));
         for (const item of rows) {
           item.deleted = !item.text.trim();
-          item.fontSize = Math.max(
-            6,
-            Math.min(144, (item.fontSize || (item.type === 'note' ? 12 : 14)) + (type === 'larger' ? 1 : -1)),
+          item.fontSize = this.rememberFontSize(
+            item.type,
+            (item.fontSize || (item.type === 'note' ? 12 : 14)) + (type === 'larger' ? 1 : -1),
           );
         }
         for (const page of new Set(rows.map((item) => item.page))) this.viewer.drawAnnotations(page);
@@ -224,8 +229,8 @@ export class TextAnnotations {
     }
     const before = structuredClone(row);
     const fontSize = row.fontSize || (row.type === 'note' ? 12 : 14);
-    if (type === 'larger') row.fontSize = Math.min(144, fontSize + 1);
-    if (type === 'smaller') row.fontSize = Math.max(6, fontSize - 1);
+    if (type === 'larger') row.fontSize = this.rememberFontSize(row.type, fontSize + 1);
+    if (type === 'smaller') row.fontSize = this.rememberFontSize(row.type, fontSize - 1);
     if (type === 'border' && row.type === 'text') row.border = !row.border;
     if (type === 'reset') delete row.width;
     if (type === 'delete') {

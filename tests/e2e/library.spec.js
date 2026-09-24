@@ -68,6 +68,8 @@ test('nested folders, multi-select move tree, view switch and folder-first sorti
   expect(await page.locator('.library-card').first().getAttribute('class')).toContain('folder-card');
   await page.screenshot({ path: 'test-results/library-list.png', animations: 'disabled' });
   await page.reload();
+  await expect(page.locator('.textLayer span').first()).toBeVisible();
+  await expect(page.locator('#document-tabs')).toHaveAttribute('aria-busy', 'false');
   await library(page);
   await expect(page.locator('#document-grid')).toHaveClass(/library-list/);
   await page.locator('.library-document-name').filter({ hasText: 'Papers' }).click();

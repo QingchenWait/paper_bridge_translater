@@ -74,6 +74,48 @@ export function hitShape(annotation, point, width, height, tolerance = 8) {
     return Math.hypot(p.x - geometry.x, p.y - geometry.y) <= geometry.radius + tolerance;
   return geometry.segments.some(([start, end]) => distanceToSegment(p, start, end) <= tolerance);
 }
+
+// Erase the swept path, not just event endpoints: fast pointer motion can cross
+// a thin stroke without producing a pointermove directly on it.
+export function hitEraserSweep(annotation, from, to, width, height, tolerance = 18) {
+  const point = (p) => ({ x: p.x * width, y: p.y * height });
+  const a = point(from),
+    b = point(to);
+  const cross = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  const near = (c, d, radius = tolerance) =>
+    (cross(a, b, c) * cross(a, b, d) < 0 && cross(c, d, a) * cross(c, d, b) < 0) ||
+    Math.min(
+      distanceToSegment(a, c, d),
+      distanceToSegment(b, c, d),
+      distanceToSegment(c, a, b),
+      distanceToSegment(d, a, b),
+    ) <= radius;
+  if (annotation.type === 'pen')
+    return (annotation.points || []).some((p, i, points) => near(point(p), point(points[i + 1] || p)));
+  if (annotation.type !== 'shape') return false;
+  const shape = shapeGeometry(annotation, width, height);
+  if (shape.type === 'circle')
+    return distanceToSegment({ x: shape.x, y: shape.y }, a, b) <= shape.radius + tolerance;
+  if (shape.type === 'rectangle') {
+    if (
+      hitShape(annotation, from, width, height, tolerance) ||
+      hitShape(annotation, to, width, height, tolerance)
+    )
+      return true;
+    const x = shape.x - tolerance,
+      y = shape.y - tolerance,
+      right = shape.x + shape.width + tolerance,
+      bottom = shape.y + shape.height + tolerance;
+    const corners = [
+      { x, y },
+      { x: right, y },
+      { x: right, y: bottom },
+      { x, y: bottom },
+    ];
+    return corners.some((p, i) => near(p, corners[(i + 1) % 4], 0));
+  }
+  return shape.segments.some(([start, end]) => near(start, end));
+}
 export function translateAnnotation(annotation, dx, dy, box = { w: 0, h: 0 }) {
   const before = structuredClone(annotation);
   const xs =

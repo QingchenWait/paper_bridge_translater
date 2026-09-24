@@ -304,6 +304,9 @@
     font-size: 0.71rem;
     min-width: 6rem;
   }
+  .toolbar .zoom-group .custom-select {
+    width: 6.3rem;
+  }
   .toolbar .select-menu {
     position: fixed;
     top: auto;
@@ -462,11 +465,15 @@
     padding: 1.25rem;
   }
   .source-text {
-    font-size: 0.86rem;
+    font-size: calc(0.86rem * var(--reading-font-scale, 1));
     line-height: 1.6;
   }
   .translation-section header h3 {
     font-size: 1rem;
+  }
+  .translation-section header .icon-button {
+    width: 2rem;
+    height: 2.3rem;
   }
   .section-tag {
     font-size: 0.52rem;

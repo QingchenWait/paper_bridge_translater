@@ -171,7 +171,7 @@ export class OpenPdfMenu {
     let handedOff = false;
     const dialog = modal(
       '打开外部 PDF',
-      `<form id="external-pdf-form" novalidate><label class="field"><span>PDF 文件链接</span><input name="url" type="url" required placeholder="https://example.com/paper.pdf" autocomplete="url"></label><label class="field"><span>重命名名称（选填）</span><div class="pdf-filename-field"><input name="rename" placeholder="留空沿用链接文件名"><span aria-label="固定文件后缀">.pdf</span></div></label><p class="note external-pdf-status" role="status" aria-live="polite"></p><div class="modal-actions"><button type="submit" class="button primary">${icon('book-open')}打开 PDF</button></div></form>`,
+      `<form id="external-pdf-form" novalidate><label class="field"><span>PDF 文件链接</span><input name="url" type="url" required placeholder="https://arxiv.org/pdf/2503.13443" autocomplete="url"></label><label class="field"><span>重命名名称（选填）</span><div class="pdf-filename-field"><input name="rename" placeholder="留空沿用链接文件名"><span aria-label="固定文件后缀">.pdf</span></div></label><p class="note external-pdf-status" role="status" aria-live="polite"></p><div class="modal-actions"><button type="submit" class="button primary">${icon('book-open')}打开 PDF</button></div></form>`,
       {
         onClose: () => {
           if (!handedOff) controller.abort();

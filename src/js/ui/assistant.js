@@ -1,5 +1,6 @@
 import { all, get, put, patch, contextDocument } from '../storage.js';
 import { getSettings, getProvider } from '../settings.js';
+import { ReadingFonts, readingFontButtons } from './reading-fonts.js';
 import {
   translationEngines,
   translationEngineValue,
@@ -47,6 +48,7 @@ export class Assistant {
     this.exportingTranslations = new Set();
     this.epoch = 0;
     this.root = document.getElementById('assistant-content');
+    this.readingFonts = new ReadingFonts(this.root);
     document.querySelectorAll('[data-assistant-tab]').forEach(
       (btn) =>
         (btn.onclick = () => {
@@ -55,11 +57,16 @@ export class Assistant {
         }),
     );
     document.getElementById('translation-settings').onclick = () => this.settings();
-    document.addEventListener('settings-changed', (event) => this.renderEngine(event.detail));
+    document.addEventListener('settings-changed', (event) => {
+      this.renderEngine(event.detail);
+      this.readingFonts.update(event.detail);
+    });
   }
   async render() {
     const epoch = ++this.epoch;
-    this.renderEngine(await getSettings());
+    const settings = await getSettings();
+    this.renderEngine(settings);
+    this.readingFonts.update(settings);
     if (epoch !== this.epoch) return;
     document.querySelectorAll('[data-assistant-tab]').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.assistantTab === this.tab);
@@ -102,10 +109,10 @@ export class Assistant {
   renderSelection() {
     const entry = this.selections.get(this.app.activeId);
     if (!entry) {
-      this.root.innerHTML = `<div class="assistant-empty"><div class="empty-orbit"><img src="${illustration('sparkles')}" alt=""></div><span class="eyebrow">A LITTLE HELP, A LOT OF CLARITY</span><h2>PDF 中选中词句，实时转译</h2><p>支持 LLM 翻译 & 传统快速翻译<br>内置翻译<b>额度有限</b>，可前往设置申请+配置新 API</p><div class="empty-tip">${icon('languages')}单词查词典 · 句子即刻翻译</div></div><div class="assistant-bottom-note">${icon('shield-check')}划词结果仅在本次阅读中保留</div>`;
+      this.root.innerHTML = `<div class="assistant-empty"><div class="empty-orbit"><img src="${illustration('sparkles')}" alt=""></div><span class="eyebrow">A LITTLE HELP, A LOT OF CLARITY</span><h2>PDF 中选中词句，实时转译</h2><p>支持 LLM 翻译 & 传统快速机翻<br>内置机翻<b>额度有限</b>，可前往设置，申请+配置免费 API</p><div class="empty-tip">${icon('languages')}单词查词典 · 句子即刻翻译</div></div><div class="assistant-bottom-note">${icon('shield-check')}划词结果仅在本次阅读中保留</div>`;
       return;
     }
-    this.root.innerHTML = `<div class="selection-content"><section class="translation-section"><header><h3>原文 <span class="section-tag">${isSingleWord(entry.original) ? 'WORD' : 'SOURCE'}</span></h3><div>${iconButton('speak-source', 'volume-2', '朗读原文')}${iconButton('copy-source', 'copy', '复制原文')}</div></header><p class="source-text">${esc(entry.original)}</p></section><section class="translation-section"><header><h3>${entry.dictionary ? '词典释义' : '翻译结果'} <span class="section-tag">${esc(entry.engine || '')}</span></h3><div>${iconButton('speak-result', 'volume-2', '朗读译文')}${iconButton('copy-result', 'copy', '复制译文')}</div></header><div id="selection-result" class="markdown"></div>${entry.loading ? '<div class="inline-loading"><span class="spinner small"></span>正在理解这段文字…</div>' : ''}${entry.error ? `<div class="error-card">${icon('circle-alert')}<span>${esc(entry.error)}</span></div>${button('retry-selection', 'refresh-cw', '重试')}` : ''}</section><div class="translation-footnote">${icon('check')}自动整理 PDF 断词与换行</div></div>`;
+    this.root.innerHTML = `<div class="selection-content"><section class="translation-section"><header><h3>原文 <span class="section-tag">${isSingleWord(entry.original) ? 'WORD' : 'SOURCE'}</span></h3><div>${readingFontButtons('source')}${iconButton('speak-source', 'volume-2', '朗读原文')}${iconButton('copy-source', 'copy', '复制原文')}</div></header><p class="source-text">${esc(entry.original)}</p></section><section class="translation-section"><header><h3>${entry.dictionary ? '词典释义' : '翻译结果'} <span class="section-tag">${esc(entry.engine || '')}</span></h3><div>${readingFontButtons('selection')}${iconButton('speak-result', 'volume-2', '朗读译文')}${iconButton('copy-result', 'copy', '复制译文')}</div></header><div id="selection-result" class="markdown reading-output"></div>${entry.loading ? '<div class="inline-loading"><span class="spinner small"></span>正在理解这段文字…</div>' : ''}${entry.error ? `<div class="error-card">${icon('circle-alert')}<span>${esc(entry.error)}</span></div>${button('retry-selection', 'refresh-cw', '重试')}` : ''}</section><div class="translation-footnote">${icon('check')}自动整理 PDF 断词与换行</div></div>`;
     const target = this.root.querySelector('#selection-result');
     if (entry.dictionary) {
       const {
@@ -154,6 +161,7 @@ export class Assistant {
         else this.speak(entry.original, 'en');
       };
     } else mountMarkdown(target, entry.result || '');
+    this.readingFonts.apply();
     const result = entry.dictionary
       ? entry.dictionary.chinese ||
         entry.dictionary.entries[0].meanings
@@ -320,7 +328,7 @@ export class Assistant {
       'PDF 生成方式',
     )}</div><p id="full-capability" class="note"></p>${job ? `<div class="progress-card"><span class="spinner"></span><strong id="full-stage">${esc(job.stage || 'LLM 分析中')}</strong>${button('cancel-full', 'stop-circle', '停止')}</div>` : button('start-full', 'sparkles', '开始全文翻译', 'primary full-width')}</div></div></div>${
       latest
-        ? `<div class="result-toolbar"><span>${latest.status === 'complete' ? '翻译完成' : latest.status === 'streaming' ? '正在生成' : '已保留部分结果'} · ${dateLabel(latest.createdAt)}</span><div>${iconButton('copy-full', 'copy', '复制全文')}${iconButton('export-full', 'download', '生成并下载 PDF')}${iconButton('open-translated', 'book-open', '在左侧打开译文 PDF')}</div></div>${
+        ? `<div class="result-toolbar"><span>${latest.status === 'complete' ? '翻译完成' : latest.status === 'streaming' ? '正在生成' : '已保留部分结果'} · ${dateLabel(latest.createdAt)}</span><div>${readingFontButtons('full')}${iconButton('copy-full', 'copy', '复制全文')}${iconButton('export-full', 'download', '生成并下载 PDF')}${iconButton('open-translated', 'book-open', '在左侧打开译文 PDF')}</div></div>${
             records.length > 1
               ? select(
                   'translation-history',
@@ -332,10 +340,11 @@ export class Assistant {
                   '翻译历史',
                 )
               : ''
-          }<article id="full-result" class="markdown full-result"></article>${latest.error ? `<div class="error-card">${esc(latest.error)}</div>` : ''}`
+          }<article id="full-result" class="markdown full-result reading-output"></article>${latest.error ? `<div class="error-card">${esc(latest.error)}</div>` : ''}`
         : ''
     }</div>`;
     if (latest) mountMarkdown(this.root.querySelector('#full-result'), latest.content);
+    this.readingFonts.apply();
     if (latest) {
       this.root.querySelector('.result-toolbar').dataset.translationId = latest.id;
       this.updateExportProgress();
@@ -369,6 +378,7 @@ export class Assistant {
     this.root.querySelector('[data-select="translation-history"]')?.addEventListener('valuechange', (e) => {
       shown = records.find((r) => r.id === e.detail);
       mountMarkdown(this.root.querySelector('#full-result'), shown.content);
+      this.readingFonts.apply();
       this.root.querySelector('.result-toolbar').dataset.translationId = shown.id;
       this.updateExportProgress();
     });
@@ -427,7 +437,10 @@ export class Assistant {
         const summary = this.root.querySelector('[data-full-stage]');
         if (summary) summary.textContent = job.stage;
         const result = this.root.querySelector('#full-result');
-        if (result) mountMarkdown(result, record.content);
+        if (result) {
+          mountMarkdown(result, record.content);
+          this.readingFonts.apply();
+        }
       }
     };
     try {

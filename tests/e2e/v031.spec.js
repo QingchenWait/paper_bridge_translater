@@ -87,9 +87,9 @@ test('external PDFs validate the link, fix the suffix, and import into root even
   const form = page.locator('#external-pdf-form');
   await form.locator('[type="submit"]').click();
   await expect(form.locator('[role="status"]')).toContainText('请填写');
-  await form.locator('[name="url"]').fill('https://files.test/a.pdf?x=1');
+  await form.locator('[name="url"]').fill('https://user:secret@files.test/a.pdf');
   await form.locator('[type="submit"]').click();
-  await expect(form.locator('[role="status"]')).toContainText('以 .pdf 结尾');
+  await expect(form.locator('[role="status"]')).toContainText('不包含账号密码');
   expect(downloads).toBe(0);
   await form.locator('[name="url"]').fill('https://files.test/Remote.PDF');
   await form.locator('[name="rename"]').fill('重命名论文.PDF');

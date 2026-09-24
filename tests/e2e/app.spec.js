@@ -597,6 +597,13 @@ test('translation popover anchors below its button and uses the selected API', a
   await page.getByRole('button', { name: '翻译引擎', exact: true }).click();
   await expect(page.getByRole('option')).toHaveCount(4);
   await page.getByRole('option', { name: 'Second API · second-model', exact: true }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        async () => (await (await import('/src/js/settings.js')).getSettings()).translationProviderId,
+      ),
+    )
+    .toBe('second');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await selectText(page, 'parallel computation');
   await expect(page.locator('#selection-result')).toContainText('第二个 API');

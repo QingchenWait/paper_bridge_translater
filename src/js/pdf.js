@@ -3,7 +3,7 @@ import { applePdfOptions, releaseAppleCanvases, deferAppleTextPlacement } from '
 import { all, put, patch, get } from './storage.js';
 import { uid } from './utils.js';
 import { planSelectionAction, selectionActionState } from './selection-actions.js';
-import { drawShape, shapeGeometry, hitShape, translateAnnotation, distanceToSegment } from './shapes.js';
+import { drawShape, shapeGeometry, hitShape, translateAnnotation, hitEraserSweep } from './shapes.js';
 import { renderAlignedText } from './pdf-text.js';
 import { indexPageText, findPageMatches } from './pdf-search.js';
 import { TextAnnotations } from './text-annotations.js';
@@ -67,6 +67,8 @@ export class PdfViewer {
     this.tool = 'select';
     this.color = '#ffe082';
     this.tasks = new Map();
+    this.eraserWrites = Promise.resolve();
+    this.pendingEraseIds = new Set();
     this.rendered = new Map();
     this.history = new Map();
     this.future = new Map();
@@ -74,6 +76,7 @@ export class PdfViewer {
     this.textLayers = new Map();
     this.pageContents = new Map();
     this.searchMatches = new Map();
+    this.searchHighlightsVisible = false;
     this.drawingOptions = { noteSize: 12, textSize: 14, penWidth: 2, shape: 'rectangle' };
     this.pointers = new Set();
     this.selectionPointers = new Set();
@@ -315,6 +318,7 @@ export class PdfViewer {
     annotations.className = 'annotations';
     const search = document.createElement('div');
     search.className = 'search-highlights';
+    search.hidden = !this.searchHighlightsVisible;
     const ink = document.createElement('canvas');
     ink.className = 'ink-layer';
     ink.width = canvas.width;
@@ -410,6 +414,11 @@ export class PdfViewer {
           h: r.height / bounds.height,
         }));
     });
+  }
+  setSearchHighlightsVisible(visible) {
+    this.searchHighlightsVisible = Boolean(visible);
+    for (const layer of this.container.querySelectorAll('.search-highlights'))
+      layer.hidden = !this.searchHighlightsVisible;
   }
   drawSearchMatches(page) {
     const layer = this.container.querySelector(`[data-page="${page}"] .search-highlights`);
@@ -639,6 +648,7 @@ export class PdfViewer {
     return { page: annotation.page, x: point.x || 0, y: point.y || 0 };
   }
   async undo(redo = false) {
+    await this.eraserWrites;
     if (this.historyBusy || !this.doc) return;
     this.textAnnotations.finish().catch(this.callbacks.error);
     this.cancelAnnotationDrag?.();
@@ -909,12 +919,75 @@ export class PdfViewer {
     let points = null;
     let previous;
     let gesture;
+    let erasing = null;
     const point = (event) => {
       const r = canvas.getBoundingClientRect();
       return {
         x: Math.max(0, Math.min(1, (event.clientX - r.left) / r.width)),
         y: Math.max(0, Math.min(1, (event.clientY - r.top) / r.height)),
       };
+    };
+    const stopErasing = (event) => {
+      if (!erasing || (event && event.pointerId !== erasing.pointerId)) return;
+      const id = erasing.pointerId;
+      erasing = null;
+      if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+    };
+    const eraseSweep = (event) => {
+      const stroke = erasing;
+      if (!stroke || event.pointerId !== stroke.pointerId) return;
+      if (
+        this.tool !== 'eraser' ||
+        this.doc.id !== stroke.documentId ||
+        this.generation !== stroke.generation ||
+        !canvas.isConnected
+      ) {
+        stopErasing(event);
+        return;
+      }
+      const bounds = canvas.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) return;
+      // Do not clamp captured coordinates outside the page onto its edge.
+      const next = {
+        x: (event.clientX - bounds.left) / bounds.width,
+        y: (event.clientY - bounds.top) / bounds.height,
+      };
+      const from = stroke.previous;
+      stroke.previous = next;
+      const hits = this.annotations
+        .filter(
+          (a) =>
+            a.documentId === stroke.documentId &&
+            a.page === page &&
+            !a.deleted &&
+            !stroke.seen.has(a.id) &&
+            !this.pendingEraseIds.has(a.id) &&
+            hitEraserSweep(a, from, next, stroke.width, stroke.height, stroke.tolerance),
+        )
+        .reverse();
+      if (!hits.length) return;
+      for (const hit of hits) {
+        stroke.seen.add(hit.id);
+        this.pendingEraseIds.add(hit.id);
+      }
+      const write = this.commitAnnotationChanges(hits.map((hit) => ({ ...hit, deleted: true })))
+        .then(() => {
+          this.history.set(stroke.documentId, [
+            ...(this.history.get(stroke.documentId) || []),
+            ...hits.map((hit) => ({ id: hit.id, before: false, after: true })),
+          ]);
+          this.future.set(stroke.documentId, []);
+          this.notifyHistory();
+          if (this.doc.id === stroke.documentId) this.callbacks.saved();
+        })
+        .catch((error) => {
+          for (const hit of hits) stroke.seen.delete(hit.id);
+          this.callbacks.error(error);
+        })
+        .finally(() => {
+          for (const hit of hits) this.pendingEraseIds.delete(hit.id);
+        });
+      this.eraserWrites = Promise.all([this.eraserWrites, write]).then(() => {});
     };
     canvas.onpointerdown = async (event) => {
       if (this.textAnnotations.finishedPointer === event) return;
@@ -935,42 +1008,20 @@ export class PdfViewer {
         canvas.setPointerCapture(event.pointerId);
         event.preventDefault();
       } else if (tool === 'eraser') {
-        const hit = this.annotations
-          .filter((a) => a.page === page && !a.deleted && ['pen', 'shape'].includes(a.type))
-          .reverse()
-          .find((a) =>
-            a.type === 'shape'
-              ? hitShape(
-                  a,
-                  start,
-                  Number(canvas.parentElement.dataset.baseWidth),
-                  Number(canvas.parentElement.dataset.baseHeight),
-                  18 / this.scale,
-                )
-              : a.points.some(
-                  (p, i) =>
-                    distanceToSegment(
-                      { x: start.x * canvas.clientWidth, y: start.y * canvas.clientHeight },
-                      { x: p.x * canvas.clientWidth, y: p.y * canvas.clientHeight },
-                      {
-                        x: (a.points[i + 1] || p).x * canvas.clientWidth,
-                        y: (a.points[i + 1] || p).y * canvas.clientHeight,
-                      },
-                    ) < 18,
-                ),
-          );
-        if (hit) {
-          await patch('annotations', hit.id, { deleted: true });
-          hit.deleted = true;
-          this.history.set(documentId, [
-            ...(this.history.get(documentId) || []),
-            { id: hit.id, before: false, after: true },
-          ]);
-          this.future.set(documentId, []);
-          this.notifyHistory();
-          this.drawAnnotations(page);
-          this.callbacks.saved();
-        }
+        if (event.button !== 0 || erasing) return;
+        erasing = {
+          pointerId: event.pointerId,
+          documentId,
+          generation: this.generation,
+          previous: start,
+          seen: new Set(),
+          width: Number(canvas.parentElement.dataset.baseWidth),
+          height: Number(canvas.parentElement.dataset.baseHeight),
+          tolerance: 18 / this.scale,
+        };
+        canvas.setPointerCapture(event.pointerId);
+        event.preventDefault();
+        eraseSweep(event);
       } else if (tool === 'text') {
         const fontSize = this.drawingOptions.textSize,
           color = this.color;
@@ -983,6 +1034,16 @@ export class PdfViewer {
       }
     };
     canvas.onpointermove = (event) => {
+      if (erasing) {
+        if (event.pointerId !== erasing.pointerId) return;
+        if (event.pointerType === 'mouse' && !(event.buttons & 1)) {
+          stopErasing(event);
+          return;
+        }
+        event.preventDefault();
+        eraseSweep(event);
+        return;
+      }
       if (!points) return;
       const next = point(event);
       if (gesture.tool === 'shape') {
@@ -1012,7 +1073,13 @@ export class PdfViewer {
       ctx.stroke();
       previous = next;
     };
-    const end = () => {
+    const end = (event) => {
+      if (erasing) {
+        if (event.pointerId !== erasing.pointerId) return;
+        if (event.type === 'pointerup') eraseSweep(event);
+        stopErasing(event);
+        return;
+      }
       if (!points) return;
       const completed = points;
       points = null;
@@ -1034,5 +1101,6 @@ export class PdfViewer {
     };
     canvas.onpointerup = end;
     canvas.onpointercancel = end;
+    canvas.onlostpointercapture = stopErasing;
   }
 }
