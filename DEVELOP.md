@@ -1,5 +1,14 @@
 # 开发记录
 
+## v0.4.0 同版本修订 · 重定向首页缓存导致刷新失败 · 2026-09-26
+
+- 根因：线上 `/index.html` 返回 308 到 `/`，而本地测试服务器直接返回 200。Service Worker 安装用 `cache.addAll` 跟随重定向，将最终 HTML（`redirected: true`，保留重定向 URL 列表）存到 `index.html` 键。随后首页导航使用 `redirect: manual`，直接返回该缓存违反 Fetch 的响应约束，出现报告中的网络错误。首次未受 SW 控制的访问正常；离线模型使用不是根因，清除站点数据只是暂时撤掉有问题的 SW/缓存。
+- 仅修改 `tools/offline-service-worker.mjs` 的首页响应出口：缓存或网络取得的同源已重定向响应，使用原 body 流、status、statusText、headers 创建新的 `Response`，去除不适用于导航的重定向元数据；`clone()` 会保留该元数据，不能解决问题。普通响应、非首页请求和运行库分支保持原逻辑，不强制改缓存版本或注销 SW；已存在的重定向缓存同样可读。
+- 模型选择、空闲加载、切走终止 Worker、慢网 UI 优先、模型文件及两个 IndexedDB 均未修改；没有新增依赖或静态模型资源，版本保持 0.4.0。桌面和移动端共用 SW 修复，不涉及 UI 布局。
+- `tools/verify-offline-dist.mjs` 增加 `PAPER_BRIDGE_TEST_INDEX_REDIRECT=1`，本地返回真实 308 并断言缓存 `redirected: true`，覆盖 Lite 翻译后刷新、`index.html?query` 导航和关闭源站后重开，保留 PDF/引擎偏好及慢网不阻塞检查。修复前同一用例在刷新处复现 `net::ERR_FAILED`；修复后 Chromium、Firefox、WebKit 均通过。
+- 另以 `.cache/sw-redirect/verify-upgrade.mjs` 的隔离资料验证根路径旧 SW → 新 SW：先复现失败，更新并等待旧客户端关闭后的正常激活；保留原缓存名称、HTML 和 `redirected: true` 标记，两个数据库的测试记录及无关缓存均完整，随后在线访问与断网刷新通过。临时测试不进入发布包，不通过清缓存、注销 SW 或 `skipWaiting` 恢复。
+- 验证：`npm run check`、98 项单元、生产构建、原 `test:dist` 均通过；部署包仍为 305 文件、约 89.4 MiB。测试使用临时浏览器资料与合成 PDF，不清除用户资料。未改动或部署线上网站；部署时必须包含新 `sw.js`，新 SW 仍等待旧客户端关闭后激活。
+
 ## v0.4.0 同版本修订 · 按引擎加载与慢网入口 · 2026-09-26
 
 - App.init 在控件绑定和首次 assistant.render 后启动离线管理，不等待模型。页面 load 后才安排所选本地模型的 idle/timeout 加载；在线 API/LLM 不预热 Lite，也不加载其他离线引擎。

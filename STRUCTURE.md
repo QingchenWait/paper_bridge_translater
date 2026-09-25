@@ -188,6 +188,8 @@ v0.4.0 额外创建 **独立** `paper-bridge-offline` 数据库（版本 1），
 
 静态 Service Worker 使用 `paper-bridge-shell-<scope>-<content hash>` 的 Cache Storage。安装清单只包含非推理静态文件（不预缓存 Lite 权重、Bergamot/ONNX 运行库），排除用户 PDF 和任何外部 API 响应。更新等待旧页关闭后激活，只删除自身 scope 的过期 shell。模型缓存、用户文档库与 shell 缓存职责独立。
 
+首页导航（scope 根目录或 `index.html`，含查询参数）共用 `index.html` 缓存键。静态主机将该文件重定向到根目录时，预缓存的最终 HTML 保留 `redirected: true`；响应出口仅对同源已重定向首页，用原 body 流、状态和响应头新建 `Response`，使其满足导航请求的重定向约束。此逻辑兼容已有缓存，不改普通静态资源、运行库分支及模型加载策略，不需要删除缓存或数据库。
+
 数据库名 `paper-bridge`，版本 2；所有对象仓库以 `id` 为 keyPath。升级仅新增缺失表，旧文档 folderId 缺省视为根目录，不重写或清除原数据。
 
 | 表 | 核心字段 | 用途 / 不变量 |
@@ -268,6 +270,8 @@ Lite 保持 Mozilla base-memory 原权重、预置分片、MPL-2.0；备份和�
 ### 离线构建与部署
 
 `prepare-offline-assets.mjs` 验证仓库内独立二进制，缺失时按固定 URL 下载并验证；预先解压 `.gz`、分片大文件。原 Mozilla JS 保留，生成 `.mjs` 仅适配严格模式 global export 并导出工厂。`offline-service-worker.mjs` 在生产构建后生成 shell 安装列表及独立按需运行库列表；`verify-offline-dist.mjs` 启动临时子路径静态站、真实推理、关闭源站后重载验证。`dist/sw.js` 为生成文件，不手改。
+
+`verify-offline-dist.mjs` 的 `PAPER_BRIDGE_TEST_INDEX_REDIRECT=1` 模式模拟静态托管的 `index.html` → 根目录 308，断言缓存保留重定向标记后执行在线刷新、带查询参数导航及断网重开。与 `PAPER_BRIDGE_SMOKE_ENGINE` 组合验证三内核；默认模式继续覆盖无重定向的本地静态部署。
 
 HTTP(S) 服务需支持 `.mjs/.js` JavaScript 与 `.wasm` MIME；HTTPS/localhost 可安装 SW。Tauri WebView 无 SW 时仍从随包目录读取 Lite，宿主需允许 Worker、WASM 与本地模块请求；没有新增原生工程。Mozilla 二进制需要相应 SIMD/原子指令支持，ONNX 提供 SIMD/标量两种固定运行库，均无需 GPU、SharedArrayBuffer 或 COOP/COEP。
 

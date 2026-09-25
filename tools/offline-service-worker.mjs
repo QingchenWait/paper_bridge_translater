@@ -64,7 +64,14 @@ self.addEventListener('fetch', event => {
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const key = isHome ? new URL('index.html', ROOT).href : url.href;
-    return await cache.match(key) || fetch(event.request);
+    const response = await cache.match(key) || await fetch(event.request);
+    // HTML precached through /index.html -> / retains its redirect URL list.
+    // Navigation requests use redirect:"manual" and cannot accept that response.
+    // Rebuild same-origin HTML (including old cache entries), preserving its body
+    // and HTTP metadata. clone() would retain the redirected flag.
+    return isHome && response.redirected && new URL(response.url).origin === ROOT.origin
+      ? new Response(response.body, { status: response.status, statusText: response.statusText, headers: response.headers })
+      : response;
   })());
 });
 `,

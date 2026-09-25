@@ -163,6 +163,8 @@ v0.3.1 修复 Noto 字体子集编码，保留原始 NotoSansSC 字体和字形�
 - **Tauri 宿主**：需使用支持模块 Worker、WebAssembly、IndexedDB 的系统 WebView；静态协议需正确提供 JS/MJS/WASM MIME 类型。如果宿主启用 CSP，须允许本地 Worker、模块、WASM 编译与静态资源请求；无需 WebGPU、SharedArrayBuffer 或 COOP/COEP。Service Worker 不可用的自定义协议仍可读取随包资源。本项目未新增原生工程、未制作或真机验证 Tauri 安装包。
 - **兼容性**：CPU 单线程 Worker，在支持相应 WASM 能力的现代 Chrome/Edge、Firefox、Safari/WebView 上运行。Mozilla 预编译 Bergamot 包含 SIMD/原子指令，不能声称是无 SIMD 的最低版本 WASM；启动前会检测模块能力，不支持时明确报错。ONNX 使用支持标量回退的固定浏览器运行库。不承诺所有历史浏览器、低内存设备均能加载 Pro；不支持时可使用 Lite 或升级浏览器。
 
+v0.4.0 已修复静态托管将 `/index.html` 重定向到 `/` 时，首次访问正常、刷新后页面打不开的问题。更新需重新构建并部署完整 `dist/`（含 `sw.js`）；浏览器收到新 Service Worker 后，关闭该站点所有旧标签再打开即可激活修复。无需清除站点数据或重新下载模型。按当前引擎加载、切走释放 Worker、慢网先使用 UI 的策略保持不变。
+
 本轮遵循“不增加部署包、不使用 CORS 受限站点”的约束：未找到满足条件的 Firefox `en→zh base` 浏览器下载源，因此 Plus 保留原 OPUS-MT INT8。曾考虑的 Plus 静态权重已移除，不需要重新安装已有 OPUS/NLLB 缓存。ModelScope 连接和 CORS 已在本开发网络实测，仍可能受具体运营商、浏览器策略或服务可用性影响。
 
 本次验证包含：从 ModelScope 实际下载完整 OPUS-MT 后翻译、NLLB 文件哈希/跨域读取、取消 Plus/Pro 时个人数据保留，以及三模型准备完成后关闭源站再重载翻译。可选联网回归需设置 `PAPER_BRIDGE_TEST_LIVE_SOURCES=1`；默认不会为了测试重新下载模型。
@@ -285,6 +287,8 @@ npm run build
 npm run test:dist
 npm run test:offline-dist
 ```
+
+模拟线上入口重定向：设置环境变量 `PAPER_BRIDGE_TEST_INDEX_REDIRECT=1` 后运行 `npm run test:offline-dist`。此模式保留真实 `redirected: true` 的首页缓存，检查使用 Lite 后在线刷新、带参数的 `index.html` 导航及断网重开；可配合 `PAPER_BRIDGE_SMOKE_ENGINE=firefox` 或 `webkit`。本次修复已通过这三个内核的回归。
 
 端到端测试优先使用 Windows 已安装的 Chrome；其他平台可安装 Chromium，或设置 `PLAYWRIGHT_CHROMIUM_EXECUTABLE`。运行完整用例前执行 `npx playwright install chromium webkit firefox`，Apple 用例使用独立临时 WebKit 资料。测试使用合成 PDF 与用户指定的 `tests/1-s2.0-S0950705126003436-main.pdf` 性能样本，不读取其他个人文档、Key 或浏览器资料。缺少该样本时自动跳过对应性能用例；PDF 只在本地渲染，不上传到外部服务。外部 API 回归使用可控响应；FreeDictionaryAPI/3325 已实测浏览器跨域获取公开词条，有道已实测原生式请求可返回、网页 Origin 被拒绝。当前客户端入口以模拟宿主验证，尚未联调原生安装包或 CORS 代理。
 

@@ -6,6 +6,8 @@ import { chromium, firefox, webkit, expect } from '@playwright/test';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 
 const root = resolve('dist');
+// Match static hosts such as Cloudflare Pages, where /index.html redirects to /.
+const redirectIndex = process.env.PAPER_BRIDGE_TEST_INDEX_REDIRECT === '1';
 let releaseModelAssets;
 const modelGate = new Promise((done) => {
   releaseModelAssets = done;
@@ -14,6 +16,11 @@ const modelRequests = [];
 const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url, 'http://localhost');
+    if (redirectIndex && url.pathname === '/paper-bridge/index.html') {
+      response.writeHead(308, { Location: '/paper-bridge/', 'Cache-Control': 'no-store' });
+      response.end();
+      return;
+    }
     if (/\/offline\/(?:lite|bergamot|onnx)\//.test(url.pathname)) {
       modelRequests.push(url.pathname);
       await modelGate;
@@ -161,6 +168,22 @@ try {
       .toContain('机器翻译');
   };
   await translate();
+  if (redirectIndex) {
+    const cached = await page.evaluate(async () => {
+      const key = (await caches.keys()).find((key) => key.startsWith('paper-bridge-shell-'));
+      const response = await (await caches.open(key)).match(new URL('index.html', location.href));
+      return { status: response?.status, redirected: response?.redirected };
+    });
+    // Exercise the exact cache state that caused the reported production failure.
+    if (cached.status !== 200 || cached.redirected !== true)
+      throw new Error(`Missing redirected cache fixture: ${JSON.stringify(cached)}`);
+    await page.reload();
+    await page.locator('.textLayer span').first().waitFor();
+    await translate();
+    await page.goto(`${origin}/paper-bridge/index.html?redirect-regression=1`);
+    await page.locator('.textLayer span').first().waitFor();
+    await translate();
+  }
   const optional = process.env.PAPER_BRIDGE_TEST_MODEL_DIR
     ? JSON.parse(await readFile('public/offline/manifest.json')).models.filter((model) => !model.bundled)
     : [];
@@ -214,7 +237,7 @@ try {
   await page.screenshot({ path: `test-results/offline-production-${name}.png` });
   if (errors.length || external.length) throw new Error(JSON.stringify({ errors, external }));
   console.log(
-    `Offline production passed (${name}): UI/SW ready with model requests blocked, model assets only after selection, real ${optional.length ? 'Lite/Plus/Pro' : 'Lite'} translation, origin shut down before reload, preserved PDF and engine preference; no external requests.`,
+    `Offline production passed (${name}${redirectIndex ? ', index.html 308 redirect' : ''}): UI/SW ready with model requests blocked, model assets only after selection, real ${optional.length ? 'Lite/Plus/Pro' : 'Lite'} translation, origin shut down before reload, preserved PDF and engine preference; no external requests.`,
   );
 } finally {
   releaseModelAssets();
