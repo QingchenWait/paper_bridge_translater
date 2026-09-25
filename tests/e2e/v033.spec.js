@@ -33,7 +33,7 @@ for (const mobile of [false, true]) {
     await expect(trigger.locator('img')).toHaveAttribute('src', /meta/i);
     await trigger.click();
     await expect(header.getByRole('group')).toHaveCount(2);
-    await expect(header.getByRole('option')).toHaveCount(3);
+    await expect(header.getByRole('option')).toHaveCount(4);
     await page.screenshot({
       path: `test-results/v033-engines-${mobile ? 'mobile' : 'desktop'}.png`,
       animations: 'disabled',

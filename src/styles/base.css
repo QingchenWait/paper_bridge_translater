@@ -3459,3 +3459,71 @@ img {
     animation-iteration-count: infinite !important;
   }
 }
+
+/* Local translation model manager; follows the existing Soft UI tokens. */
+.offline-provider .basic-provider-title {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.offline-provider .basic-provider-title .icon {
+  width: 1.45rem;
+  height: 1.45rem;
+}
+.offline-models {
+  display: grid;
+  gap: 0.65rem;
+  padding-top: 0.75rem;
+}
+.offline-model {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(130deg, rgba(245, 247, 252, 0.85), rgba(250, 249, 255, 0.85));
+}
+.offline-model-info {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
+  overflow-wrap: anywhere;
+}
+.offline-model-info strong {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.86rem;
+}
+.offline-model-info span,
+.offline-model-info small {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+.offline-model-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.offline-model-actions .button {
+  padding: 0.45rem 0.65rem;
+  font-size: 0.75rem;
+  min-height: 2.25rem;
+}
+.offline-delete {
+  color: #bc5267;
+}
+.offline-progress {
+  height: 0.3rem;
+  border-radius: 1rem;
+  overflow: hidden;
+  background: #e9eafa;
+}
+.offline-progress i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #4f63ff, #8b6df4);
+  transition: width 0.2s ease;
+}

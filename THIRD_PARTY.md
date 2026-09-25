@@ -1,5 +1,25 @@
 # 第三方代码、素材与来源
 
+## v0.4.0 离线翻译资源
+
+以下资源在 2026-09-25 至 2026-09-26 核实并固定到 `public/offline/manifest.json`，下载后按大小与 SHA-256 校验；不在推理时调用 CDN。模型权重是独立文件，不嵌入主 JavaScript bundle。
+
+| 资源 | 来源、版本及用途 | 许可证 |
+| --- | --- | --- |
+| Firefox Lite 模型 | [Mozilla translations](https://github.com/mozilla/translations)、[模型注册表](https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/db/models.json)：Release `en→zh base-memory`，训练标识 `llmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g`；使用该导出的 Marian 权重、SentencePiece 源/目标词表和 shortlist | MPL-2.0；随包 `offline/licenses/BERGAMOT-MPL-2.0.txt` |
+| Bergamot 推理 | [Firefox 官方集成](https://github.com/mozilla-firefox/firefox/tree/main/toolkit/components/translations/bergamot-translator)，v0.6.0；glue 固定 Git blob `4cc89e7b56dfa6d33e9b85deea3fdb9c8c11cffa`，WASM 固定 Mozilla Remote Settings 附件，SHA-256 `a3a89d9ad0a4ed8f27bf3e403701b23f5709816f6376438503f2fa5b0182c2dc` | MPL-2.0；原 JS 未修改，派生 `.mjs` 标注 `globalThis` 严格模式修复和 ESM 导出，由准备脚本可复现生成 |
+| Plus 模型 | [ModelScope Xenova/opus-mt-en-zh](https://modelscope.cn/models/Xenova/opus-mt-en-zh)，固定文件版本 `563922a09e0e294a0f5785bffdaa758732da3714`；六个文件与原 Hugging Face `046f55aec303cdee3e0318604406d4df20f1e8ea` 的大小/SHA-256 一致，保留原缓存身份 | Apache-2.0；不预置权重 |
+| Pro 模型 | [ModelScope Xenova/nllb-200-distilled-600M](https://modelscope.cn/models/Xenova/nllb-200-distilled-600M)，固定文件 revision `23881c60efa6920de9bfa90f71038155c7ffe465`；与原 Hugging Face 版本的六文件哈希一致，保留缓存身份；量化 encoder/merged decoder 与四个 JSON | CC-BY-NC-4.0，非商业；不随 APP 分发权重，设置行与 README 明示。原模型定位研究用途，不宣称为生产级或专业认证翻译 |
+| Transformers.js | [2.17.2 浏览器构建](https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js)，动态加载于 Worker；本地模型与自定义缓存参考[官方文档](https://huggingface.co/docs/transformers.js/v2.17.2/en/custom_usage) | Apache-2.0，`TRANSFORMERS-APACHE-2.0.txt`；内含 Hugging Face Jinja MIT 许可证 `JINJA-MIT.txt` |
+| ONNX Runtime Web | [1.14.0](https://github.com/microsoft/onnxruntime/tree/v1.14.0)，与上述浏览器构建匹配；独立 SIMD/标量 WASM、CPU 单线程 | MIT，`ONNXRUNTIME-MIT.txt` 与 `ONNXRUNTIME-NOTICES.txt` 保留第三方声明 |
+| 本地模型彩色图标 | [Microsoft Fluent Emoji Desktop computer](https://github.com/microsoft/fluentui-emoji/blob/main/assets/Desktop%20computer/Color/desktop_computer_color.svg)，下载原始 SVG 至 `src/_logo/llms/local.svg`，未自行重绘 | MIT；复用 `src/_logo/FLUENT-LICENSE` |
+
+本项目未更改模型参数。Bergamot 原始 `.gz` 仅解压并将大权重分片，Worker 组合后字节/哈希与原导出相同。Mozilla 的 Google Storage 导出 shortlist 与 Remote Settings 同名附件大小不同，本项目采用指定训练导出的配套文件，并通过真实译句验证；manifest 记录实际字节与校验值，不能用文件名推断可互换。
+
+运行时：Lite 始终从随包同源资源读取；Plus/Pro 从 ModelScope 固定版本下载，没有受 CORS 限制的备用站点。构建期修复缺失 Lite 时使用 `hf-mirror.com` 镜像（TiberiuCristianLeon/Bergamot 固定 revision `18008da9d2922dde09dae47f5fee71cac4253701`）并可回退 Mozilla GCS，按原始 Mozilla 哈希验证；该构建脚本不受浏览器 CORS 约束。开发期 WABT 1.0.37 只在 `.cache` 检查 WASM 指令，不进入发布。
+
+Firefox base 源调研（2026-09-25/26）：Mozilla GCS、Firefox 附件 CDN 和所测 HF 镜像均未通过浏览器跨域读取，虽能命令行下载且哈希一致，也未用于 Plus 发布。Mozilla 注册表的 base 条目 `releaseStatus=null`，不能称其为当前 Release 或保证比 base-memory 更强。未找到同时满足大陆可达、CORS 和版本可信的第三方源；按用户指定回退 OPUS，删除试验中的额外 Plus 静态资源，部署包不扩充。ModelScope 已验证实际浏览器 CORS 和文件哈希，但单点网络测试不是对所有大陆运营商永久可用的保证。
+
 项目许可证：GPL-3.0-only，见 `LICENSE`。本项目改编了“海姆休息室”设置模型和存档工作流，因此保留 GPL 分发要求。该项目仅作只读参考，未修改原目录。
 
 | 来源 | 用途 | 许可证 / 说明 |

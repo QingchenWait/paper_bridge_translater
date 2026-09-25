@@ -1,4 +1,5 @@
 import { basicTranslate, basicOptions } from './basic-translation.js';
+import { isOfflineModel } from './offline/catalog.js';
 import {
   hasChinese,
   hasDictionaryDetails,
@@ -26,6 +27,7 @@ export async function onlineTranslate(
   signal,
   basic,
   style = '学术论文',
+  onProgress,
 ) {
   const provider = basic?.defaultProvider || 'mymemory';
   return basicTranslate(text, {
@@ -35,6 +37,7 @@ export async function onlineTranslate(
     target,
     signal,
     style,
+    onProgress,
   });
 }
 const plainText = (html) => new DOMParser().parseFromString(html || '', 'text/html').body.textContent.trim();
@@ -66,7 +69,7 @@ export async function lookupWord(word, signal, onUpdate = () => {}, basic) {
     failedProviders = new Set();
   const providers = [
     ...new Set([basic?.defaultProvider || 'mymemory', ...basicOptions(basic).map(([id]) => id)]),
-  ].filter((id) => id !== 'volcengine' || nativeDictionaryAvailable());
+  ].filter((id) => !isOfflineModel(id) && (id !== 'volcengine' || nativeDictionaryAvailable()));
   let detailTranslationFailed = false;
   const translateDetail = (value) => {
     if (!translationCache.has(value))

@@ -12,6 +12,7 @@ import { requestLlm } from '../llm.js';
 import { cleanPdfText, isSingleWord, CLEANING_INSTRUCTIONS } from '../text.js';
 import { lookupWord, onlineTranslate, LANGUAGES } from '../translation.js';
 import { BASIC_APIS, basicOptions } from '../basic-translation.js';
+import { isOfflineModel } from '../offline/catalog.js';
 import { mountMarkdown } from '../markdown.js';
 import { FullMarkdown } from '../full-markdown.js';
 import { TranslationWriter } from '../translation-writes.js';
@@ -63,6 +64,7 @@ export class Assistant {
       this.renderEngine(event.detail);
       this.readingFonts.update(event.detail);
     });
+    document.addEventListener('offline-models-changed', async () => this.renderEngine(await getSettings()));
   }
   async render() {
     const epoch = ++this.epoch;
@@ -118,7 +120,7 @@ export class Assistant {
       this.root.innerHTML = `<div class="assistant-empty"><div class="empty-orbit"><img src="${illustration('sparkles')}" alt=""></div><span class="eyebrow">A LITTLE HELP, A LOT OF CLARITY</span><h2>PDF 中选中词句，实时转译</h2><p>支持 LLM 翻译 & 传统快速机翻<br>内置机翻<b>额度有限</b>，可前往设置，申请+配置免费 API</p><div class="empty-tip">${icon('languages')}单词查词典 · 句子即刻翻译</div></div><div class="assistant-bottom-note">${icon('shield-check')}划词结果仅在本次阅读中保留</div>`;
       return;
     }
-    this.root.innerHTML = `<div class="selection-content"><section class="translation-section"><header><h3>原文 <span class="section-tag">${isSingleWord(entry.original) ? 'WORD' : 'SOURCE'}</span></h3><div>${readingFontButtons('source')}${iconButton('speak-source', 'volume-2', '朗读原文')}${iconButton('copy-source', 'copy', '复制原文')}</div></header><p class="source-text">${esc(entry.original)}</p></section><section class="translation-section"><header><h3>${entry.dictionary ? '词典释义' : '翻译结果'} <span class="section-tag">${esc(entry.engine || '')}</span></h3><div>${readingFontButtons('selection')}${iconButton('speak-result', 'volume-2', '朗读译文')}${iconButton('copy-result', 'copy', '复制译文')}</div></header><div id="selection-result" class="markdown reading-output"></div>${entry.loading ? '<div class="inline-loading"><span class="spinner small"></span>正在理解这段文字…</div>' : ''}${entry.error ? `<div class="error-card">${icon('circle-alert')}<span>${esc(entry.error)}</span></div>${button('retry-selection', 'refresh-cw', '重试')}` : ''}</section><div class="translation-footnote">${icon('check')}自动整理 PDF 断词与换行</div></div>`;
+    this.root.innerHTML = `<div class="selection-content"><section class="translation-section"><header><h3>原文 <span class="section-tag">${isSingleWord(entry.original) ? 'WORD' : 'SOURCE'}</span></h3><div>${readingFontButtons('source')}${iconButton('speak-source', 'volume-2', '朗读原文')}${iconButton('copy-source', 'copy', '复制原文')}</div></header><p class="source-text">${esc(entry.original)}</p></section><section class="translation-section"><header><h3>${entry.dictionary ? '词典释义' : '翻译结果'} <span class="section-tag">${esc(entry.engine || '')}</span></h3><div>${readingFontButtons('selection')}${iconButton('speak-result', 'volume-2', '朗读译文')}${iconButton('copy-result', 'copy', '复制译文')}</div></header><div id="selection-result" class="markdown reading-output"></div>${entry.loading ? `<div class="inline-loading" role="status"><span class="spinner small"></span>${esc(entry.loadingMessage || '正在理解这段文字…')}</div>` : ''}${entry.error ? `<div class="error-card">${icon('circle-alert')}<span>${esc(entry.error)}</span></div>${button('retry-selection', 'refresh-cw', '重试')}` : ''}</section><div class="translation-footnote">${icon('check')}自动整理 PDF 断词与换行</div></div>`;
     const target = this.root.querySelector('#selection-result');
     if (entry.dictionary) {
       const {
@@ -195,13 +197,21 @@ export class Assistant {
       original: text,
       result: '',
       loading: true,
-      engine: isSingleWord(text)
-        ? '在线词典'
-        : settings.translationEngine === 'online'
-          ? basicOptions(settings.basicTranslation).find(
-              ([key]) => key === settings.basicTranslation.defaultProvider,
-            )?.[1] || '在线翻译'
-          : 'AI 翻译',
+      loadingMessage:
+        settings.translationEngine === 'online' && isOfflineModel(settings.basicTranslation.defaultProvider)
+          ? '离线机翻模型加载中'
+          : '',
+      engine:
+        isSingleWord(text) &&
+        !(
+          settings.translationEngine === 'online' && isOfflineModel(settings.basicTranslation.defaultProvider)
+        )
+          ? '在线词典'
+          : settings.translationEngine === 'online'
+            ? basicOptions(settings.basicTranslation).find(
+                ([key]) => key === settings.basicTranslation.defaultProvider,
+              )?.[1] || '在线翻译'
+            : 'AI 翻译',
     };
     this.selections.set(id, entry);
     this.tab = 'selection';
@@ -212,7 +222,12 @@ export class Assistant {
         this.renderSelection();
     };
     try {
-      if (isSingleWord(text))
+      if (
+        isSingleWord(text) &&
+        !(
+          settings.translationEngine === 'online' && isOfflineModel(settings.basicTranslation.defaultProvider)
+        )
+      )
         entry.dictionary = await lookupWord(
           text,
           controller.signal,
@@ -230,6 +245,10 @@ export class Assistant {
           controller.signal,
           settings.basicTranslation,
           settings.translationStyle,
+          (phase) => {
+            entry.loadingMessage = phase === 'loading' ? '离线机翻模型加载中' : '正在理解这段文字…';
+            refresh();
+          },
         );
       else
         await requestLlm({
@@ -279,7 +298,7 @@ export class Assistant {
         ],
         settings.translationStyle,
         '翻译风格',
-      )}</div><p class="note">单个英文单词始终查询在线词典，不调用大模型。在线翻译按所选原文语言请求；百度“学术论文”使用中英论文领域接口，其他风格使用通用接口。</p><div class="modal-actions">${button('save-translation', 'check', '保存', 'primary')}</div></div>`,
+      )}</div><p class="note">选择本地引擎时，单词与句子均离线翻译；其他引擎下单个英文单词查询在线词典。在线翻译按所选原文语言请求；百度“学术论文”使用中英论文领域接口，其他风格使用通用接口。</p><div class="modal-actions">${button('save-translation', 'check', '保存', 'primary')}</div></div>`,
     );
     dialog.element.querySelector('[data-action="save-translation"]').onclick = async () => {
       try {

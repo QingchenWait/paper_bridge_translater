@@ -1,4 +1,5 @@
 import { cleanPdfText, splitForTranslation } from './text.js';
+import { offlineOptions, isOfflineModel } from './offline/catalog.js';
 
 export const BASIC_APIS = [
   {
@@ -33,6 +34,7 @@ export function basicConfigured(config) {
 export function basicOptions(basic) {
   return [
     ...BASIC_FREE,
+    ...offlineOptions(),
     ...BASIC_APIS.filter((p) => basicConfigured(basic?.providers?.[p.id])).map((p) => [p.id, p.name]),
   ];
 }
@@ -60,7 +62,10 @@ export function normalizeBasicTranslation(raw = {}) {
   const options = basicOptions({ providers });
   return {
     providers,
-    defaultProvider: options.some(([id]) => id === raw?.defaultProvider) ? raw.defaultProvider : 'mymemory',
+    defaultProvider:
+      options.some(([id]) => id === raw?.defaultProvider) || isOfflineModel(raw?.defaultProvider)
+        ? raw.defaultProvider
+        : 'mymemory',
   };
 }
 // An archive without secrets must never erase an existing local credential.
@@ -360,10 +365,22 @@ async function sendBasicRequest(provider, config, text, source, target, style, s
 }
 export async function basicTranslate(
   text,
-  { provider = 'mymemory', config, source = 'en', target = 'zh-CN', style = '学术论文', signal } = {},
+  {
+    provider = 'mymemory',
+    config,
+    source = 'en',
+    target = 'zh-CN',
+    style = '学术论文',
+    signal,
+    onProgress,
+  } = {},
 ) {
   const cleaned = cleanPdfText(text);
   if (!cleaned || source === target) return cleaned;
+  if (isOfflineModel(provider)) {
+    const { offlineTranslate } = await import('./offline-translation.js');
+    return offlineTranslate(cleaned, { provider, source, target, signal, onProgress });
+  }
   // GET/JSONP also need room for percent-encoding within common URL length limits.
   const limits = { mymemory: 450, google: 1500, baidu: 1500, aliyun: 4500, volcengine: 4500 };
   const result = [];

@@ -1,0 +1,209 @@
+{
+  "schema": 1,
+  "version": "0.4.0",
+  "verifiedAt": "2026-09-26",
+  "partBytes": 16777216,
+  "runtimes": [
+    {
+      "path": "bergamot/bergamot-translator.js",
+      "bytes": 100187,
+      "sha256": "faff1ef6285b0d26f01787776fd49299dfb756ecb9688aa990c250e66797b47d",
+      "url": "https://raw.githubusercontent.com/mozilla-firefox/firefox/main/toolkit/components/translations/bergamot-translator/bergamot-translator.js",
+      "githubBlob": "https://api.github.com/repos/mozilla-firefox/firefox/git/blobs/4cc89e7b56dfa6d33e9b85deea3fdb9c8c11cffa",
+      "engine": "bergamot"
+    },
+    {
+      "path": "bergamot/bergamot-translator.wasm",
+      "bytes": 4960506,
+      "sha256": "a3a89d9ad0a4ed8f27bf3e403701b23f5709816f6376438503f2fa5b0182c2dc",
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-wasm/05082c31-aee8-4249-9e01-c1865afd7520.wasm",
+      "engine": "bergamot"
+    },
+    {
+      "path": "onnx/transformers.min.js",
+      "bytes": 897938,
+      "sha256": "bcf7cf304e51f470ed59409622b9d6ffbad80dfcf5baf6a40c919e4b9c4ff812",
+      "url": "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js",
+      "engine": "onnx"
+    },
+    {
+      "path": "onnx/ort-wasm.wasm",
+      "bytes": 9223228,
+      "sha256": "bbdcb6b3c7d294577d806077630460be4e13ca35a345acb5e81188e9649fa74a",
+      "url": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/ort-wasm.wasm",
+      "engine": "onnx"
+    },
+    {
+      "path": "onnx/ort-wasm-simd.wasm",
+      "bytes": 10014674,
+      "sha256": "9bd07bababc65f53d061f457233eeae501be7ceb8a2adb9eef52d87fe776d865",
+      "url": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/ort-wasm-simd.wasm",
+      "engine": "onnx"
+    }
+  ],
+  "models": [
+    {
+      "id": "offline-lite",
+      "name": "中英翻译 Lite",
+      "engine": "bergamot",
+      "bundled": true,
+      "revision": "llmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g",
+      "license": "MPL-2.0",
+      "source": "en",
+      "target": "zh-CN",
+      "files": [
+        {
+          "path": "lite/lex.50.50.enzh.s2t.bin",
+          "bytes": 4485184,
+          "sha256": "8575d8daa10e2dbff316dcdf8e1ce475357bcc2c92bdc63b736a2d5add22f681",
+          "url": "https://hf-mirror.com/TiberiuCristianLeon/Bergamot/resolve/18008da9d2922dde09dae47f5fee71cac4253701/base-memory/enzh/lex.50.50.enzh.s2t.bin.gz",
+          "fallbackUrls": [
+            "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-zh/llmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g/exported/lex.50.50.enzh.s2t.bin.gz"
+          ],
+          "role": "lexicalShortlist",
+          "compression": "gzip"
+        },
+        {
+          "path": "lite/model.enzh.intgemm.alphas.bin",
+          "bytes": 43849787,
+          "sha256": "4e5accc141373565ddc8fa1565bceaa8d0c3482a82cab8131c719ebcc6c2157c",
+          "url": "https://hf-mirror.com/TiberiuCristianLeon/Bergamot/resolve/18008da9d2922dde09dae47f5fee71cac4253701/base-memory/enzh/model.enzh.intgemm.alphas.bin.gz",
+          "fallbackUrls": [
+            "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-zh/llmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g/exported/model.enzh.intgemm.alphas.bin.gz"
+          ],
+          "role": "model",
+          "compression": "gzip",
+          "parts": [
+            "lite/model.enzh.intgemm.alphas.bin.part0",
+            "lite/model.enzh.intgemm.alphas.bin.part1",
+            "lite/model.enzh.intgemm.alphas.bin.part2"
+          ]
+        },
+        {
+          "path": "lite/srcvocab.enzh.spm",
+          "bytes": 806952,
+          "sha256": "bd9b65504acc6d9726dd281f7defc2adb7c2c22d0688fe2f84697de25197c8c5",
+          "url": "https://hf-mirror.com/TiberiuCristianLeon/Bergamot/resolve/18008da9d2922dde09dae47f5fee71cac4253701/base-memory/enzh/srcvocab.enzh.spm.gz",
+          "fallbackUrls": [
+            "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-zh/llmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g/exported/srcvocab.enzh.spm.gz"
+          ],
+          "role": "srcVocab",
+          "compression": "gzip"
+        },
+        {
+          "path": "lite/trgvocab.enzh.spm",
+          "bytes": 772004,
+          "sha256": "aded6993c36e440284d11cec3f6b8aef9c0e43188a772d80be342a713adf223d",
+          "url": "https://hf-mirror.com/TiberiuCristianLeon/Bergamot/resolve/18008da9d2922dde09dae47f5fee71cac4253701/base-memory/enzh/trgvocab.enzh.spm.gz",
+          "fallbackUrls": [
+            "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-zh/llmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g/exported/trgvocab.enzh.spm.gz"
+          ],
+          "role": "trgVocab",
+          "compression": "gzip"
+        }
+      ],
+      "architecture": "base-memory",
+      "releaseStatus": "Release"
+    },
+    {
+      "id": "offline-plus",
+      "name": "中英翻译 Plus",
+      "engine": "onnx",
+      "bundled": false,
+      "repository": "Xenova/opus-mt-en-zh",
+      "revision": "046f55aec303cdee3e0318604406d4df20f1e8ea",
+      "sourceRevision": "563922a09e0e294a0f5785bffdaa758732da3714",
+      "license": "Apache-2.0",
+      "source": "en",
+      "target": "zh-CN",
+      "files": [
+        {
+          "path": "config.json",
+          "bytes": 1503,
+          "sha256": "4727d1229a04f95bf6f39abf949d8080615433d99d6ebd85f81c09edd247d5fa",
+          "url": "https://modelscope.cn/models/Xenova/opus-mt-en-zh/resolve/563922a09e0e294a0f5785bffdaa758732da3714/config.json"
+        },
+        {
+          "path": "generation_config.json",
+          "bytes": 293,
+          "sha256": "b743baabb7da4c1a2f19fe558bd6b4c0c7c3b0762fcb5ca7a48fe5a2c2219803",
+          "url": "https://modelscope.cn/models/Xenova/opus-mt-en-zh/resolve/563922a09e0e294a0f5785bffdaa758732da3714/generation_config.json"
+        },
+        {
+          "path": "tokenizer.json",
+          "bytes": 6380952,
+          "sha256": "d0c7da27056e8f42adce9e76d8e792e5daa64e15f5acd2e7aabf0121877dd4c1",
+          "url": "https://modelscope.cn/models/Xenova/opus-mt-en-zh/resolve/563922a09e0e294a0f5785bffdaa758732da3714/tokenizer.json"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "bytes": 282,
+          "sha256": "a914596e6bff113a8428d4793b586da87cd0b95697a0e72aba90cc1d95858481",
+          "url": "https://modelscope.cn/models/Xenova/opus-mt-en-zh/resolve/563922a09e0e294a0f5785bffdaa758732da3714/tokenizer_config.json"
+        },
+        {
+          "path": "onnx/encoder_model_quantized.onnx",
+          "bytes": 52899742,
+          "sha256": "d3b7912bf6a9bd27e4c074c2df91d4ff3d5b4bc5f7f6c8d7cc9c805c98fbafee",
+          "url": "https://modelscope.cn/models/Xenova/opus-mt-en-zh/resolve/563922a09e0e294a0f5785bffdaa758732da3714/onnx/encoder_model_quantized.onnx"
+        },
+        {
+          "path": "onnx/decoder_model_merged_quantized.onnx",
+          "bytes": 60212804,
+          "sha256": "023be4f841f4c47cd65fffcbaa81c0d99d7f7e0138f7ba0e03fa220a4e688aff",
+          "url": "https://modelscope.cn/models/Xenova/opus-mt-en-zh/resolve/563922a09e0e294a0f5785bffdaa758732da3714/onnx/decoder_model_merged_quantized.onnx"
+        }
+      ]
+    },
+    {
+      "id": "offline-pro",
+      "name": "多语种翻译 Pro",
+      "engine": "onnx",
+      "bundled": false,
+      "repository": "Xenova/nllb-200-distilled-600M",
+      "revision": "261c31d1a5732c67cdd16d80e8d6088507c7ccea",
+      "license": "CC-BY-NC-4.0",
+      "source": "multilingual",
+      "target": "multilingual",
+      "files": [
+        {
+          "path": "config.json",
+          "bytes": 873,
+          "sha256": "52f035acb54ac80e5ef7fe78d6967f8ddf8e8799f078d1a92a2c8168d8ff4a20",
+          "url": "https://modelscope.cn/models/Xenova/nllb-200-distilled-600M/resolve/23881c60efa6920de9bfa90f71038155c7ffe465/config.json"
+        },
+        {
+          "path": "generation_config.json",
+          "bytes": 189,
+          "sha256": "1ce846259ae04c572ae1863e358534bbc376ff3d3f100b1494feda6200b51de8",
+          "url": "https://modelscope.cn/models/Xenova/nllb-200-distilled-600M/resolve/23881c60efa6920de9bfa90f71038155c7ffe465/generation_config.json"
+        },
+        {
+          "path": "tokenizer.json",
+          "bytes": 17331224,
+          "sha256": "8ac789ad7dabea44d41537822d48c516ba358374c51813e2cba78c006e150c94",
+          "url": "https://modelscope.cn/models/Xenova/nllb-200-distilled-600M/resolve/23881c60efa6920de9bfa90f71038155c7ffe465/tokenizer.json"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "bytes": 544,
+          "sha256": "ddf411c9f790d081e72de76bb8e8b714d74e160e61bc10c9bd8f56022dcd7fd7",
+          "url": "https://modelscope.cn/models/Xenova/nllb-200-distilled-600M/resolve/23881c60efa6920de9bfa90f71038155c7ffe465/tokenizer_config.json"
+        },
+        {
+          "path": "onnx/encoder_model_quantized.onnx",
+          "bytes": 419120483,
+          "sha256": "5cde664eacba07a62f198857ec6c06e09572b1ebb77c8137f1fa99ac604a3a28",
+          "url": "https://modelscope.cn/models/Xenova/nllb-200-distilled-600M/resolve/23881c60efa6920de9bfa90f71038155c7ffe465/onnx/encoder_model_quantized.onnx"
+        },
+        {
+          "path": "onnx/decoder_model_merged_quantized.onnx",
+          "bytes": 475505771,
+          "sha256": "dd66608c2a4194e78f95548fa0e64f24302303698c5b09fa8e1f9e16ec00676b",
+          "url": "https://modelscope.cn/models/Xenova/nllb-200-distilled-600M/resolve/23881c60efa6920de9bfa90f71038155c7ffe465/onnx/decoder_model_merged_quantized.onnx"
+        }
+      ],
+      "sourceRevision": "23881c60efa6920de9bfa90f71038155c7ffe465"
+    }
+  ]
+}

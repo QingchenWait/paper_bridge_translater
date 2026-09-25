@@ -1,6 +1,6 @@
 # 项目结构与开发逻辑
 
-适用版本：0.3.5。入口为 `index.html` → `src/js/main.js`，浏览器标题为“纸间 · 文献翻译”。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
+适用版本：0.4.0。入口为 `index.html` → `src/js/main.js`，浏览器标题为“纸间 · 文献翻译”。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
 
 ## 文件树
 
@@ -31,6 +31,7 @@ pdf_translater/
 │  │  ├─ LOBE-ICONS-LICENSE
 │  │  ├─ llms/{deepseek,mimo,qwen,openai,glm,kimi,lmstudio}.svg
 │  │  ├─ llms/{meta,google,baidu,aliyun,volcengine}.svg
+│  │  ├─ llms/local.svg             Fluent Emoji 彩色本地电脑图标
 │  │  ├─ icons/*.svg               66 个已下载 Lucide 图标，清单见下
 │  │  └─ art/{open-book,sparkles}.png
 │  ├─ js/
@@ -46,6 +47,13 @@ pdf_translater/
 │  │  ├─ translation.js            免费词典、词形补充、基础翻译入口
 │  │  ├─ dictionary-fallbacks.js   有道/FreeDictionaryAPI/3325 适配、详细释义判定和中文转换
 │  │  ├─ basic-translation.js      非 LLM 服务配置、签名、JSONP、分段和响应解析
+│  │  ├─ offline-translation.js    离线模型 Worker RPC、后台预热、下载/取消/释放
+│  │  ├─ offline/
+│  │  │  ├─ catalog.js             轻量模型目录、已安装集合和语言方向校验
+│  │  │  ├─ store.js               独立模型数据库、流式下载、gzip、哈希和安装提交
+│  │  │  ├─ translation.worker.js  按类型分发请求、加载器注册与串行推理
+│  │  │  ├─ bergamot.js            Marian/SentencePiece/shortlist 的 WASM 适配
+│  │  │  └─ onnx.js                Transformers.js/ORT 单线程与 IDB customCache
 │  │  ├─ llm.js                    Chat/Responses、文件输入、SSE、原生 PDF
 │  │  ├─ markdown.js               Markdown/KaTeX/高亮/安全 HTML
 │  │  ├─ markdown-core.js          窗口/Worker 共用同参数 Markdown、公式和代码解析器
@@ -80,6 +88,7 @@ pdf_translater/
 │  │     ├─ pdf-navigation.js      缩略图、内置书签、目标解析及导航渲染生命周期
 │  │     ├─ settings-panel.js      设置五页、启动引导、迁移入口
 │  │     ├─ basic-settings.js      基础翻译折叠配置、连接测试、默认与保存
+│  │     ├─ offline-settings.js    三行模型配置、空间/进度/导入/下载/删除
 │  │     ├─ desktop.js             桌面状态和分栏调整独立交互
 │  │     └─ mobile.js              移动端分屏、视口；保留阅读选区供标注
 │  └─ styles/
@@ -91,10 +100,21 @@ pdf_translater/
 ├─ public/
 │  ├─ fonts/{NotoSansSC-Regular.otf,LICENSE}
 │  ├─ pdfjs/{cmaps,standard_fonts,wasm}/   构建前从锁定的 PDF.js 包复制
+│  ├─ offline/
+│  │  ├─ manifest.json            统一固定版本、引擎、URL、哈希与文件分片清单
+│  │  ├─ bergamot/                bergamot-translator.js、生成的 .mjs、.wasm
+│  │  ├─ lite/                    model.enzh.intgemm.alphas.bin.part{0,1,2}
+│  │  │                           lex.50.50.enzh.s2t.bin、srcvocab.enzh.spm、trgvocab.enzh.spm
+│  │  ├─ onnx/                    transformers.min.js、ort-wasm.wasm、ort-wasm-simd.wasm
+│  │  └─ licenses/                BERGAMOT-MPL-2.0、TRANSFORMERS-APACHE-2.0、JINJA-MIT、
+│  │                              ONNXRUNTIME-MIT、ONNXRUNTIME-NOTICES（均为 .txt）
 │  └─ licenses/                    项目与素材许可证；FONTKIT.txt、CORE-JS.txt 随源码维护
 ├─ tools/
 │  ├─ download-assets.ps1          下载开源图标、插画、字体与文档
 │  ├─ prepare-assets.mjs           拷贝 PDF.js 资源和分发许可证
+│  ├─ prepare-offline-assets.mjs   固定资源校验/下载/gzip 解压/分片与 ESM glue 生成
+│  ├─ offline-service-worker.mjs   Vite 构建插件，生成 dist/sw.js 和静态预缓存清单
+│  ├─ verify-offline-dist.mjs      三内核子路径部署、断网重载和真实 Lite 推理
 │  ├─ check.mjs                    递归进行 JavaScript 语法检查
 │  └─ verify-dist.mjs              Chromium/WebKit 生产子路径、PDF/Markdown Worker、中文导出
 ├─ tests/
@@ -103,6 +123,7 @@ pdf_translater/
 │  ├─ providers.test.mjs           模板、可信官网映射、原配置保留与原生桥接测试
 │  ├─ dictionary-fallbacks.test.mjs 词性/子词义、中文转换、客户端识别与错误结构测试
 │  ├─ basic-translation.test.mjs   三家签名、响应、分段/取消、凭据存档和并发保存
+│  ├─ offline-translation.test.mjs 离线目录/方向、gzip/哈希、安装事务/删除隔离及资源校验
 │  ├─ settings-persistence.test.mjs 自动保存交错写入、完整设置备份、清空 API 防复活
 │  ├─ reading-fonts.test.mjs       独立字号边界、并发保存、重载和无密钥存档恢复
 │  ├─ stream-rendering.test.mjs    Markdown 语义、未闭合语法、合并保存/失败及最终刷新
@@ -132,6 +153,7 @@ pdf_translater/
 │     ├─ file-management.spec.js   重复导入确认、批量/跨页并发、外链副本和当前目录
 │     ├─ editing-settings.spec.js  编辑导出回读、选词/绘图手势、引导/API 设置回归
 │     ├─ basic-translation.spec.js 基础设置/教程/默认引擎、JSONP 和阅读区路由
+│     ├─ offline-translation.spec.js 离线 UI/加载/取消、三内核与真实 Lite/Plus/Pro
 │     ├─ dictionary-fallbacks.spec.js 有道宿主、详细释义补齐、中文转换/回退/取消及来源
 │     ├─ settings-autosave.spec.js 自动保存、即时备份、动画速度、桌面/手机启动页
 │     ├─ inline-annotations.spec.js 原位输入/宽度/工具、空对象、原生导出及紧凑控件
@@ -159,6 +181,10 @@ pdf_translater/
 
 ## 数据模型与不变量
 
+v0.4.0 额外创建 **独立** `paper-bridge-offline` 数据库（版本 1），`assets` 使用清单 SHA-256 为 key、Blob 为 value，`installed` 使用模型 ID 为 key、`{revision}` 为 value。安装按文件验证保存，最后提交版本标记；读取清单时检查所有必要 Blob 存在且长度匹配。模型删除仅删除该模型的安装标记和不被其他清单模型共享的资源；预置 Lite 禁止删除。原 `paper-bridge` 数据库、版本和备份字段没有变化，模型权重不进入用户备份/云同步。
+
+静态 Service Worker 使用 `paper-bridge-shell-<scope>-<content hash>` 的 Cache Storage。清单只包含发布目录内静态文件（Lite 权重不重复缓存），排除用户 PDF 和任何外部 API 响应。更新等待旧页关闭后激活，只删除自身 scope 的过期 shell。模型缓存、用户文档库与 shell 缓存职责独立。
+
 数据库名 `paper-bridge`，版本 2；所有对象仓库以 `id` 为 keyPath。升级仅新增缺失表，旧文档 folderId 缺省视为根目录，不重写或清除原数据。
 
 | 表 | 核心字段 | 用途 / 不变量 |
@@ -180,6 +206,58 @@ pdf_translater/
 settings/app 新增 `readingFontSizes: {source,selection,full}`，值为各区域默认字号的百分比。默认 100，范围 70–180；按 APP 全局配置保存，不挂靠单个 PDF。普通备份/云同步均携带，导入需选择恢复设置。
 
 ## 内部模块 API / 函数
+
+### offline-translation.js 与 offline/*
+
+| API | 职责与调用关系 |
+| --- | --- |
+| `startOfflineTranslation()` | `App.init` 挂载 UI 后调用；idle/timeout 后刷新安装列表、预热 Lite；仅生产安全来源注册 SW |
+| `offlineTranslate(text,{provider,source,target,signal,onProgress})` | 被 `basicTranslate` 的本地分支调用；方向验证、加载/推理状态、取消、模型切换和 90 秒闲置释放 |
+| `refreshOfflineModels({preserveDefault=false})` | RPC `list`，用完整安装标记更新目录并发布变更事件；取消清理时 preserveDefault=true，保证不改个人设置 |
+| `manageOfflineModel(id,action,files?)` | 下载/导入/删除的独立 Worker；仅操作所指定的模型，完成后刷新列表 |
+| `cancelOfflineModel(id)` | 终止该模型下载 Worker，并删除其部分文件；清理完成前保持 busy 状态 |
+| `offlineJob(id)` / `subscribeOffline(callback)` | 读取任务进度、订阅 UI 状态，返回取消订阅函数 |
+| `WorkerClient.call/close`（内部） | 请求 ID、pending map、事件绑定、超时、错误与终止；推理失败释放可能损坏的 WASM 实例 |
+| `OFFLINE_MODELS` / `offlineOptions` / `offlineInstalled` | 小型 UI 目录；Lite 永久可选，其余仅完整安装后可选，权重和 URL 不进入此模块 |
+| `setOfflineInstalled` / `isOfflineModel` / `validateDirection` | 合法 ID 和可用性管理、英→简中约束；Pro 映射现有八种语言至 NLLB token |
+| `loadAsset(file,base,{remote,required,onProgress})` | IDB 命中优先，Lite 读取同源静态分片，Plus/Pro 读取固定 ModelScope URL；no-store 下载、解压、校验、持久保存，required 安装不得忽略存储错误 |
+| `validateAsset` / `unpackFile` | 大小与分块 SHA-256；gzip 自动转换为可直接读取的二进制 Blob |
+| `getAsset` / `putAsset` / `assetKey` | `paper-bridge-offline/assets` 中按内容哈希读写 Blob |
+| `installedModels(manifest)` | 校验安装 revision、全部文件存在与长度；不将残缺缓存标记成已安装 |
+| `installModel` / `clearModelCache` / `removeModel` | 空间估算、下载或逐文件导入、完整提交；事务内精确删除，不清空个人数据库 |
+| `createBergamot` / `createOnnx` | 统一返回 `{translate(text,source,target)}` 的加载器；全部在 Worker 内，ONNX 禁止远程模型回退 |
+
+Worker 消息为 `{id,type,modelId,base,text?,source?,target?,files?}`。`type` 支持 `list/load/translate/install/import/delete`，成功为 `{id,result}`，错误为 `{id,error}`，过程事件为 `{id,type:'progress',modelId,phase,bytes?,total?}`。`phase` 为 `loading/ready/download/installed`；取消通过终止 Worker，避免长同步 WASM 推理无法响应取消消息。输入按句及有界长度完整分段，非中日目标间用空格连接，不静默截断长选区。
+
+`manifest.schema=1`；`runtimes[]` 包含 `engine/path/bytes/sha256/url`，Mozilla glue 附固定 Git blob URL。`models[]` 包含 `id/name/engine/bundled/revision/license/source/target/files`，文件可附 `role/compression/parts/fallbackUrls`，模型可附 `sourceRevision`；哈希针对**解压并组合后**数据。清单为随应用发布的可信资源，用户只可导入匹配的模型文件，不能上传 JS 加载器。未来增加格式需扩展 Worker 加载器表及模型语言元数据。
+
+### 离线 UI 映射
+
+| HTML 元素/事件 | 功能与处理器 |
+| --- | --- |
+| `.offline-provider .basic-summary` | 位于百度配置上方；`aria-expanded`/`aria-controls` 切换折叠主体 |
+| `#offline-models-body` / `.offline-models` | 容纳 Lite/Plus/Pro 三行，无额外页面或路由 |
+| `[data-offline-model]` | 名称、彩色本地图标、语言、MiB、`role=status` 和操作按钮 |
+| `[data-offline-action=install/import/delete/cancel]` | `OfflineSettings.run` / 隐藏文件输入 / `cancelOfflineModel`；busy 禁用冲突操作；Lite 永久禁删 |
+| `.offline-import` | Plus/Pro 各自六个 JSON/ONNX 文件，可为 gzip；传给 Worker，不读取或执行外部代码 |
+| `.offline-progress` | 自绘线性下载进度，ARIA 0–100，与原结果区环形推理动画分开 |
+| `[data-select=basic-default]` | `BasicSettings` 保存基础默认值；模型安装变化即时更新菜单；删除当前模型切回 Lite |
+| `#selection-engine` / `offline-models-changed` | `Assistant.renderEngine` 更新“机翻高速引擎”内“本地引擎 · 模型名”选项与彩色 LOGO |
+| `#selection-result` 相邻 `.inline-loading` | 本地模型未就绪先显示“离线机翻模型加载中”，Worker ready 后显示“正在理解这段文字…” |
+
+公共 Soft UI 样式位于 `base.css`；`desktop.css` 横排内容与右侧按钮、`mobile.css` 列式内容及下方按钮，保持原有两套导航与设置滚动行为。相关 `OfflineSettings.destroy` 仅解除 UI 订阅，关闭设置不擅自取消用户启动的模型下载。
+
+### 下载源与同版本缓存兼容
+
+Lite 保持 Mozilla base-memory 原权重、预置分片、MPL-2.0；备份和用户数据格式不变。Plus 按用户最终体积约束保留 OPUS-MT INT8，Pro 保留 NLLB INT8，均不随包分发；二者浏览器下载改用 ModelScope 固定源。`revision` 保留原权重身份，`sourceRevision` 记录 ModelScope 文件提交，源切换不会让已验证缓存失效。Firefox base 的候选源未通过 CORS；没有 `public/offline/plus/` 或新增模型静态目录。
+
+取消先关闭专属下载 Worker，再按 manifest 哈希调用 `clearModelCache`/`removeModel` 事务删除目标资源与安装标记，不扫描或清空其他数据库；共享权重与运行库保留。网络使用 `cache:no-store`，不额外保存浏览器 HTTP 副本；`preserveDefault` 阻止取消清理顺带改写个人设置。
+
+### 离线构建与部署
+
+`prepare-offline-assets.mjs` 验证仓库内独立二进制，缺失时按固定 URL 下载并验证；预先解压 `.gz`、分片大文件。原 Mozilla JS 保留，生成 `.mjs` 仅适配严格模式 global export 并导出工厂。`offline-service-worker.mjs` 在生产构建完成后扫描 dist 并生成完整静态列表；`verify-offline-dist.mjs` 启动临时子路径静态站、真实推理、关闭源站后重载验证。`dist/sw.js` 为生成文件，不手改。
+
+HTTP(S) 服务需支持 `.mjs/.js` JavaScript 与 `.wasm` MIME；HTTPS/localhost 可安装 SW。Tauri WebView 无 SW 时仍从随包目录读取 Lite，宿主需允许 Worker、WASM 与本地模块请求；没有新增原生工程。Mozilla 二进制需要相应 SIMD/原子指令支持，ONNX 提供 SIMD/标量两种固定运行库，均无需 GPU、SharedArrayBuffer 或 COOP/COEP。
 
 ### storage.js
 
@@ -477,7 +555,7 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 
 - `constructor` / `render`：绑定右栏标签，按渲染 epoch 防止旧异步视图覆盖新视图。
 - `renderEngine(settings)`：划词页更新顶部引擎，其他页隐藏；订阅 settings-changed，按内容签名去重，保存时保留焦点，失败恢复已持久化的选项。
-- `renderSelection` / `translateSelection`：内存缓存按文档分组；新选区取消旧请求；单词与句子严格分流。
+- `renderSelection` / `translateSelection`：内存缓存按文档分组；新选区取消旧请求；在线引擎的单词与句子分流，离线引擎全部本地推理。
 - `readingFonts`：render 读取 settings 后 update；renderSelection、renderFull、全文历史/流式挂载后 apply，控制三块独立字号，不触发翻译或重建整个助手视图。
 - `settings`：按钮下方的语言/风格浮层，仅全文/问答页另显示原样式的引擎下拉；与顶部引擎共用保存规则。
 - `renderFull` / `startFull`：全文参数、历史、按文档分组的独立任务、流式落盘和阶段反馈。

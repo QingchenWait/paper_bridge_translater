@@ -1,5 +1,51 @@
 # 开发记录
 
+## v0.4.0 同版本修订 · 下载源、取消隔离与本地引擎前缀 · 2026-09-26
+
+- 最终按用户的体积约束恢复 Plus 为原 Xenova/opus-mt-en-zh INT8；未采用 Firefox base，也不再携带 Plus 静态权重。只修改模型清单、下载/取消管理及引擎标签，版本和 npm 依赖不变。
+- 来源核验：Mozilla 2026-09-25 注册表的 en-zh base 为 cjk_split_vocab_e3B-g-FeQSyTW33DUj2Btw，releaseStatus=null；base-memory 才是 Release。GCS、Firefox 附件 CDN、hf-mirror 的相关文件在本浏览器跨域测试中拒绝读取，命令行可下载不等于网页可使用。未找到同时满足大陆可达和 CORS 的 base 源，按明确授权回退 OPUS。
+- Plus/Pro 改用 ModelScope 固定文件版本：OPUS 为 563922a09e0e294a0f5785bffdaa758732da3714，NLLB 为 23881c60efa6920de9bfa90f71038155c7ffe465。六个文件的大小与 SHA-256 分别与原 manifest 一致；保留原 model.revision 作为缓存身份，另以 sourceRevision 记录镜像版本，不让已安装模型失效。浏览器不回退到受限 HF/GCS 地址。
+- Lite 保持原预置二进制和同源加载；构建修复缺失资源时才使用经哈希验证的镜像/官方源。删除尝试方案的 public/offline/plus，构建恢复原 89.4 MiB 级别，禁止将可选模型放进 JS 或静态包。
+- 下载 fetch 使用 cache:no-store，避免浏览器 HTTP 缓存残留；取消先 terminate 专属下载 Worker，再 clearModelCache（removeModel 别名）按目标 manifest 的哈希事务删除文件/安装标记，仅访问 paper-bridge-offline。共享模型资源、运行库与整个 paper-bridge 个人数据库保留；取消刷新目录使用 preserveDefault=true，不改写其他设置。
+- 主界面与翻译设置复用的引擎列表显示“本地引擎 · 中英翻译 Lite/Plus”或“本地引擎 · 多语种翻译 Pro”，设置页模型栏目名称不变，沿用原图标与桌面/手机布局。
+- 新增针对两个模型的活动下载取消测试，对比 PDF、文件、批注、消息、设置表的完整快照并检查其他模型缓存；测试 ModelScope 实际 OPUS 下载/校验/推理以及 NLLB 六文件 CORS。单元测试增至 95 项。
+- 最终验证：95 项单元、语法与构建通过。10 项离线专项首轮 9 项通过，桌面 PDF 文字层等待失败后单独复测通过；另复测原基础设置桌面流程通过。ModelScope OPUS 六文件真实浏览器下载/哈希/推理通过，NLLB 六文件完整命令行下载哈希及浏览器跨域读取通过。取消 Plus/Pro 后个人数据五张表完整快照一致、Lite 词表和其他模型哨兵保留。最终生产三模型关闭源站后重载/翻译、原 PDF 导出/恢复回归通过。
+- 最终 dist 为 305 文件、93,755,634 字节（约 89.4 MiB），`public/offline` 和 `dist/offline` 均无 Plus/Pro 权重目录；新增测试数据只在忽略的 `.cache` 内。没有发布、提交或改动 Tauri 原生工程。
+
+## v0.4.0 · 本地离线机器翻译 · 2026-09-25
+
+遵循 `.codex/pdf_translater_dev.md` 与 `src/ui_rules/ui_design_rules.md`，修改范围为离线机翻、相邻基础翻译入口、版本与文档；保留 PDF 数据库版本、文档/批注/聊天存储、LLM 请求及全文翻译协议。
+
+### 结构与运行流程
+
+- `offline/catalog.js` 持有 UI 元数据、可用模型集合与语言映射；`public/offline/manifest.json` 统一描述版本、引擎、下载源、文件角色、大小、SHA-256、压缩和分片。Firefox Lite/base-memory 与 ONNX Plus/Pro 均固定版本，不在运行时追踪 `main`。
+- `offline-translation.js` 管理 Worker RPC、进度、超时、终止及空闲释放；`offline/translation.worker.js` 串行推理。加载器注册表调用 `bergamot.js` / `onnx.js`，后续格式实现新加载器即可，不把所有模型写死为 Marian，也不加载用户提供的可执行代码。
+- UI 先挂载，空闲回调后台加载 Lite。WASM、模型初始化、解压、哈希与推理全部在 Worker 执行。切换模型/取消通过终止旧 Worker 释放堆；完成后闲置 90 秒释放内存，磁盘缓存保留。下载/导入使用独立 Worker，进度约每 120ms 合并，避免频繁刷新主线程。
+- 新建 `paper-bridge-offline` v1：`assets` 按 SHA-256 保存已验证 Blob，`installed` 按模型 ID 保存完整安装版本。逐文件校验后写入，最后提交安装标记；失败可复用已完成文件，取消删除该模型部分缓存。删除只涉及离线模型数据库，不碰 `paper-bridge`。
+- `BasicSettings` 嵌入 `OfflineSettings` 折叠模块，复用现有保存流程；`basicOptions` 合并已安装模型，`translation-engine.js` 沿用“机翻高速引擎”，彩色本地图标为下载的 Fluent Emoji 电脑 SVG。桌面与手机样式分别追加到 `desktop.css` / `mobile.css`，通过既有两套导航交互进入共享设置。
+- `Assistant.translateSelection` 仅在当前选择离线基础引擎时绕过在线单词词典，等待分为模型加载与推理两状态。在线词典的后备服务不自动混入新离线引擎。默认基础模型沿用原字段，初始化不因模型清单尚未读完而覆盖已保存的默认值。
+
+### 资源与兼容性决策
+
+- 2026-09-25 核实 Mozilla 注册表：`llmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g` 仍是 `Release/en-zh/base-memory`。模型为 43,849,787 字节，词表/导出 shortlist 合计后 49,913,927 字节。清单保存原始 gzip URL 与解压后哈希；构建前自动解压校验，大权重按 16 MiB 分片，模型不进入 JS bundle。
+- Bergamot 使用 Mozilla v0.6.0 WASM 与匹配 glue。原 JS 保留，生成 MJS 仅将非严格模式 `this` 导出变量替换为 `globalThis` 并导出工厂，修复模块 Worker 报错。无需 eval、Firefox 私有 API、SharedArrayBuffer、GPU 或跨源隔离。单线程 CPU 不等于无 SIMD：官方 WASM 包含 SIMD/原子指令，启动前 `WebAssembly.validate` 失败则明确提示升级。
+- Plus/Pro 采用 Transformers.js 2.17.2 + ONNX Runtime Web 1.14.0 浏览器构建，numThreads=1、proxy=false、allowRemoteModels=false。两者权重均不随包分发，六个文件从 ModelScope 下载，推理从 IDB customCache 读取，不调用外部服务。
+- OPUS 共 119,495,576 字节（约 114.0 MiB）；NLLB 共 911,959,084 字节，仅下载量化 encoder/merged decoder 与四个 JSON。Pro 标记非商业用途且运行内存高于文件大小；不保证低内存设备可用。长输入完整分段，模型输出触及生成上限则报错，不返回不完整译文冒充成功。
+- gzip 优先 DecompressionStream，缺失时复用已有 fflate；SHA-256 用已有 @noble/hashes 分块计算，避免为校验复制整个 Pro 文件。网络响应由流转换 Blob，进度节流。
+- Vite 插件生成 `dist/sw.js`，以静态内容哈希管理 shell 缓存。仅生产 HTTPS/localhost 注册；模型权重单独进入 IDB。新 SW 等旧页关闭才激活，只清理自身作用域旧 shell，不缓存用户 PDF、API 响应和凭据。Tauri 不依赖 SW，携带完整 dist 即可读取 Lite，宿主需允许 Worker/WASM 并提供正确 MIME/CSP；本轮未制作原生安装包。
+
+### 验证与复现
+
+- 语法检查、92 项单元测试通过；覆盖目录、语言方向、gzip、SHA-256、安装完整性、删除隔离及预置文件哈希/单文件大小。
+- 7 项离线专项浏览器测试（真实 Plus/Pro 数据）全部通过：桌面/手机、模型等待、取消/坏文件、Firefox/WebKit Lite、Plus/Pro 导入/推理/保存重载/删除。原基础翻译 5 项专项另通过。
+- 实测 Chrome 153.0.8010.50、Firefox 155.0、Playwright WebKit 26.6。`test:offline-dist` 三内核通过：子路径 `/paper-bridge/`、关闭静态源站后重载、恢复 PDF/引擎、继续真实 Lite 翻译，阻止所有外部 HTTPS 请求。Chromium 同时启用协议断网；Firefox/WebKit 的 Windows 调试断网开关会在 SW 前拒绝导航，改用关闭源站验证。Firefox headless 无法回答原有持久存储授权弹窗，测试注入 `persist=false`，未改应用代码。
+- 原 `test:dist` 的 PDF/Markdown Worker、中文批注导出、重载和 200 个公式通过。静态包约 89.4 MiB；翻译 Worker 约 22 KiB，权重与运行库不在主 JS。Plus/Pro 权重不随发布包分发。
+- 完整浏览器套件首轮 118 项通过、1 项大模型用例按默认配置跳过，5 项旧断言失败：四项固定选项数量需计入 Lite，一项假设第一个 Worker 是 PDF Worker。仅更新测试断言与按入口识别 PDF Worker 后，5 项定点复测全部通过；未改动 PDF 兼容层。可选真实模型用例在专项中另通过。
+- 最终补测：Chrome 生产子路径先导入 Plus/Pro，关闭源站、重载后切换三个真实模型，均生成中文译文且零外部请求；Plus 的下载分支以固定 URL 对应的真实文件响应测试，完整哈希校验、推理、保存重载与删除通过。一次 Pro 测试目录文件哈希不符被正确拒绝，重新获取测试文件并验证哈希后通过，未修改可信清单或放宽校验。
+- 额外旧内核检查：Windows Playwright WebKit 18.4 能执行 Lite 推理，但 CacheStorage `put`/`addAll` 后 `keys()` 仍为空，包含简单探针也不可持久；该测试内核未通过离线重载。现代 WebKit 26.6 正常。没有将此测试平台限制推广为真实 Safari 的结论，README 明示限制。
+- 可选模型测试：按 manifest 准备 `<fixture>/offline-plus/` 与 `<fixture>/offline-pro/` 各自六个 JSON/ONNX 文件，保留 onnx 子目录；设置 `PAPER_BRIDGE_TEST_MODEL_DIR=<fixture>` 后运行 `npx playwright test tests/e2e/offline-translation.spec.js`。默认跳过此约 1 GiB 外部测试数据，测试文件不入库。
+- 未进行 Android/iOS 真机、所有历史 Safari/WebView、Tauri 安装包或商业场景验证。开发网络无法直连 Hugging Face，真实测试资源通过镜像获取并对照固定官方哈希校验；Lite 读取同源静态资源，Plus/Pro 使用 ModelScope；无法访问时可导入。
+
 ## v0.3.5 · 全文流式渲染性能与 PDF 内部链接 · 2026-09-25
 
 范围限定全文翻译的接收/保存/显示管线与 PDF 原生内部链接。现有 LLM 请求协议、问答/划词保存、PDF 文字层/编辑、数据库和存档格式保留，未新增 npm 运行依赖。

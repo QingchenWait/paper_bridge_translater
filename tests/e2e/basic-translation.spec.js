@@ -66,7 +66,7 @@ for (const mobile of [false, true])
     await expect(
       page.getByRole('option', { name: 'Google 翻译（仅海外可访问）', exact: true }),
     ).toBeVisible();
-    await expect(page.locator('[data-select="basic-default"] [role="option"]')).toHaveCount(2);
+    await expect(page.locator('[data-select="basic-default"] [role="option"]')).toHaveCount(3);
     await page.getByRole('option', { name: 'MyMemory（每日上限低）', exact: true }).click();
     for (const id of ['baidu', 'aliyun', 'volcengine']) {
       const panel = await fill(page, id),
@@ -83,7 +83,7 @@ for (const mobile of [false, true])
       await expect(panel.locator('.basic-status')).toHaveClass(/connected/);
     }
     await page.getByRole('button', { name: '默认基础翻译模型', exact: true }).click();
-    await expect(page.locator('[data-select="basic-default"] [role="option"]')).toHaveCount(5);
+    await expect(page.locator('[data-select="basic-default"] [role="option"]')).toHaveCount(6);
     await page.getByRole('option', { name: '阿里云翻译 API', exact: true }).click();
     await expect(page.locator('.toast').last()).toContainText('默认基础翻译模型已保存');
     await expect(page.locator('.toast')).toHaveCount(0);

@@ -831,3 +831,21 @@
     }
   }
 }
+
+@media (max-width: 960px) {
+  .offline-model {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0.75rem;
+    gap: 0.6rem;
+  }
+  .offline-model-actions {
+    justify-content: flex-end;
+  }
+  .offline-model-actions .button {
+    min-height: 2.5rem;
+  }
+  .offline-provider .basic-provider-title {
+    white-space: normal;
+  }
+}

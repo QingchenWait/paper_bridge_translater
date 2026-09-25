@@ -26,7 +26,7 @@ test('basic settings upgrade without replacing LLMs and list only complete saved
   assert.equal(normalized.basicTranslation.defaultProvider, 'mymemory');
   assert.deepEqual(
     basicOptions(normalized.basicTranslation).map(([id]) => id),
-    ['mymemory', 'google'],
+    ['mymemory', 'google', 'offline-lite'],
   );
   const basic = normalizeBasicTranslation({
     defaultProvider: 'baidu',
@@ -35,7 +35,7 @@ test('basic settings upgrade without replacing LLMs and list only complete saved
   assert.equal(basic.defaultProvider, 'baidu');
   assert.deepEqual(
     basicOptions(basic).map(([id]) => id),
-    ['mymemory', 'google', 'baidu'],
+    ['mymemory', 'google', 'offline-lite', 'baidu'],
   );
   assert.equal(normalizeBasicTranslation({ defaultProvider: 'unknown' }).defaultProvider, 'mymemory');
 });

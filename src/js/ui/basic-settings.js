@@ -3,6 +3,7 @@ import { getSettings, saveBasicTranslation, flushSettings } from '../settings.js
 import { openExternalWebsite } from '../providers.js';
 import { esc, errorMessage } from '../utils.js';
 import { icon, button, iconButton, select, bindSelects, toast } from './components.js';
+import { OfflineSettings, offlineSettingsMarkup } from './offline-settings.js';
 
 const link = (url, text = url) =>
   `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}${icon('external-link')}</a>`;
@@ -24,7 +25,7 @@ export class BasicSettings {
     this.destroyed = false;
   }
   render() {
-    this.root.innerHTML = `<div class="basic-settings"><div class="section-heading"><div><h3>基础翻译功能</h3><p>管理无需调用 LLM 的在线翻译服务。</p></div></div><div class="field basic-default"><span>默认基础翻译模型</span>${select('basic-default', basicOptions(this.saved), this.saved.defaultProvider, '默认基础翻译模型')}</div><p class="note youdao-dictionary-note">内置有道词典（网页版不支持）：客户端接入 CORS 代理后优先查询。</p><div class="basic-providers">${BASIC_APIS.map(
+    this.root.innerHTML = `<div class="basic-settings"><div class="section-heading"><div><h3>基础翻译功能</h3><p>管理无需调用 LLM 的本地与在线翻译服务。</p></div></div><div class="field basic-default"><span>默认基础翻译模型</span>${select('basic-default', basicOptions(this.saved), this.saved.defaultProvider, '默认基础翻译模型')}</div><p class="note youdao-dictionary-note">机翻模型配置</p><div class="basic-providers">${offlineSettingsMarkup()}${BASIC_APIS.map(
       (p) => {
         const config = this.draft.providers[p.id];
         return `<section class="basic-provider" data-basic-provider="${p.id}"><button type="button" class="basic-summary" aria-expanded="false" aria-controls="basic-body-${p.id}" title="${p.name}（${p.quota}）"><span class="basic-provider-title">${p.name}<small>（${p.quota}）</small></span><span class="basic-status" role="status"></span>${icon('chevron-down')}</button><div class="basic-provider-body" id="basic-body-${p.id}" hidden><h4>${p.name}（${p.quota}）</h4><div class="basic-tutorial">${tutorials[p.id]}</div><form data-basic-form="${p.id}" autocomplete="off"><label class="field"><span>${p.idLabel}</span><input name="keyId" value="${esc(config.keyId)}" required spellcheck="false"></label><div class="field"><label for="basic-secret-${p.id}">${p.secretLabel}</label><div class="input-row api-key-row"><input id="basic-secret-${p.id}" name="secret" type="password" value="${esc(config.secret)}" autocomplete="new-password" required spellcheck="false">${iconButton('show-basic-secret', 'eye', `显示${p.secretLabel}`)}</div></div><p class="basic-test-detail note" aria-live="polite">${p.id === 'baidu' ? '“学术论文”风格使用中英论文领域翻译，其他风格使用通用翻译。' : ''}</p><div class="basic-actions">${button('test-basic', 'refresh-cw', '连接测试')}<button type="submit" class="button primary">${icon('check')}保存配置</button></div></form></div></section>`;
@@ -33,6 +34,10 @@ export class BasicSettings {
       '',
     )}</div><p class="note basic-quota-note">免费额度、认证条件与超额计费以服务商控制台为准。连接状态表示最近一次测试结果。</p></div>`;
     this.bindDefault();
+    this.offline = new OfflineSettings(this.root.querySelector('.offline-provider'), async () => {
+      this.saved = (await getSettings()).basicTranslation;
+      if (!this.destroyed) this.updateDefault();
+    });
     this.root.querySelectorAll('.basic-tutorial a').forEach((anchor) => {
       anchor.onclick = (event) => {
         event.preventDefault();
@@ -219,6 +224,7 @@ export class BasicSettings {
     }
   }
   destroy() {
+    this.offline?.destroy();
     this.capture();
     this.destroyed = true;
     for (const { id } of BASIC_APIS) this.save(id, true);

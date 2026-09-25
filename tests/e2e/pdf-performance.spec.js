@@ -146,7 +146,7 @@ test('missing modern APIs are supplied in both main window and real PDF worker o
     window.Worker = class extends NativeWorker {
       constructor(url, options) {
         // A separate realm genuinely lacks these APIs before the real entry imports.
-        const script = `(${removeModernApis.toString()})(); await import(${JSON.stringify(new URL(url, location.href).href)});`;
+        const script = `self.testWorkerSource = ${JSON.stringify(new URL(url, location.href).href)}; (${removeModernApis.toString()})(); await import(self.testWorkerSource);`;
         const objectUrl = URL.createObjectURL(new Blob([script], { type: 'text/javascript' }));
         super(objectUrl, { ...options, type: 'module' });
         URL.revokeObjectURL(objectUrl);
@@ -173,7 +173,13 @@ test('missing modern APIs are supplied in both main window and real PDF worker o
     typeof ReadableStream.prototype[Symbol.asyncIterator] === 'function';
   expect(await page.evaluate(restored)).toBe(true);
   expect(workers.length).toBeGreaterThan(0);
-  expect(await workers[0].evaluate(restored)).toBe(true);
+  const pdfWorker = (
+    await Promise.all(
+      workers.map(async (worker) => ({ worker, source: await worker.evaluate(() => self.testWorkerSource) })),
+    )
+  ).find(({ source }) => source?.includes('pdf.worker'))?.worker;
+  expect(pdfWorker).toBeTruthy();
+  expect(await pdfWorker.evaluate(restored)).toBe(true);
   await expect(page.locator('html')).not.toHaveAttribute('data-apple-webkit', '');
   await expect(page.locator('.toast.error')).toHaveCount(0);
   expect(errors).toEqual([]);

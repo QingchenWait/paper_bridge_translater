@@ -595,7 +595,7 @@ test('translation popover anchors below its button and uses the selected API', a
   await expect(page.locator('.translation-popover [data-select="translation-engine"]')).toHaveCount(0);
   await page.locator('[data-action="save-translation"]').click();
   await page.getByRole('button', { name: '翻译引擎', exact: true }).click();
-  await expect(page.getByRole('option')).toHaveCount(4);
+  await expect(page.getByRole('option')).toHaveCount(5);
   await page.getByRole('option', { name: 'Second API · second-model', exact: true }).click();
   await expect
     .poll(() =>

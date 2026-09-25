@@ -1,6 +1,6 @@
 {
   "name": "paper-bridge",
-  "version": "0.3.5",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "license": "GPL-3.0-only",
@@ -15,7 +15,9 @@
     "test:e2e": "playwright test",
     "test:dist": "node tools/verify-dist.mjs",
     "format": "prettier --write src/js src/styles tests tools/*.mjs index.html vite.config.js playwright.config.js package.json .prettierrc.json",
-    "check": "node tools/check.mjs"
+    "check": "node tools/check.mjs",
+    "prepare:offline": "node tools/prepare-offline-assets.mjs",
+    "test:offline-dist": "node tools/verify-offline-dist.mjs"
   },
   "dependencies": {
     "@noble/hashes": "2.4.0",

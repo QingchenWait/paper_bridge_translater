@@ -3,13 +3,14 @@ import { basicOptions } from '../basic-translation.js';
 import { providerBrand } from '../providers.js';
 import { esc } from '../utils.js';
 import { icon, providerLogo } from './components.js';
+import { isOfflineModel } from '../offline/catalog.js';
 
 export function translationEngines(settings) {
   return [
     ...basicOptions(settings.basicTranslation).map(([id, name]) => ({
       key: id === 'mymemory' ? 'online' : `basic:${id}`,
-      name: id === 'mymemory' ? 'MyMemory · 在线翻译' : name,
-      brand: id === 'mymemory' ? 'meta' : id,
+      name: isOfflineModel(id) ? `本地引擎 · ${name}` : id === 'mymemory' ? 'MyMemory · 在线翻译' : name,
+      brand: isOfflineModel(id) ? 'local' : id === 'mymemory' ? 'meta' : id,
       kind: '机翻',
     })),
     ...settings.chatProviders.map((p) => ({

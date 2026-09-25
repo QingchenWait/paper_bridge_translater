@@ -233,3 +233,14 @@
     }
   }
 }
+
+@media (min-width: 961px) {
+  .offline-model-actions {
+    justify-content: flex-end;
+    max-width: 12rem;
+  }
+  .offline-model:hover {
+    border-color: rgba(99, 91, 255, 0.3);
+    box-shadow: 0 0.25rem 0.8rem rgba(40, 60, 120, 0.05);
+  }
+}

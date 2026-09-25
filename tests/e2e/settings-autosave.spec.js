@@ -156,7 +156,7 @@ test('basic credentials autosave and immediate UI backup contains every key, sec
   }
   await expect(page.locator('.toast')).toHaveCount(0);
   await page.getByRole('button', { name: '默认基础翻译模型', exact: true }).click();
-  await expect(page.locator('[data-select="basic-default"] [role="option"]')).toHaveCount(5);
+  await expect(page.locator('[data-select="basic-default"] [role="option"]')).toHaveCount(6);
   await page.getByRole('option', { name: '百度论文翻译 API', exact: true }).click();
   await page.locator('[data-action="settings-cloud"]').click();
   await page.locator('#cloud-form [name="url"]').fill('https://dav.test');
