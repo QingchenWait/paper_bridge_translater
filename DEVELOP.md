@@ -1,5 +1,16 @@
 # 开发记录
 
+## v0.4.0 同版本修订 · 按引擎加载与慢网入口 · 2026-09-26
+
+- App.init 在控件绑定和首次 assistant.render 后启动离线管理，不等待模型。页面 load 后才安排所选本地模型的 idle/timeout 加载；在线 API/LLM 不预热 Lite，也不加载其他离线引擎。
+- offline-translation.js 监听既有 settings-changed，读取 translationEngine 与 basicTranslation.defaultProvider。selectedModelId、loadedId 和取消句柄管理一个推理 Worker；切走立即 terminate 并取消未执行的调度，保留 IDB 模型文件。删除原 90 秒闲置释放计时，选中的已就绪模型持续待用，切换才释放。无关设置更新不重启同一模型；首次翻译与启动恢复的同模型竞态复用实例，旧请求不能在切走后重新加载。
+- 本地切换引起的 AbortError 在选区结果静默结束等待；在线接口与 LLM 的原错误处理不变。下载、导入、删除仍使用独立任务，与推理加载分离，不更改配置含义、模型源、权重、个人数据库或布局。
+- 新增 offline/runtime-cache.js。按应用路径和固定运行库哈希生成独立 runtime CacheStorage；Worker 把已验证运行库 Blob 和 Bergamot ESM 适配模块按需保存。显式模型下载/导入只准备磁盘文件，不实例化模型。
+- offline-service-worker.mjs 将 offline/bergamot 与 offline/onnx 从安装预缓存排除，页面 shell 可先安装就绪。运行库请求优先读对应按需缓存，缺失才读本地静态源；不使用独立 waitUntil 缓存写入延长已取消的下载。缓存不可用时保留原本地 WebView 路径，无新依赖或额外模型二进制。
+- 验证：98 项单元通过；新增五项生命周期浏览器测试覆盖桌面/手机阻断模型时 UI、PDF/在线翻译可用、切走终止、重选缓存、已保存 Lite 冷启动、LLM 启动不加载及真实 Lite/Plus/Pro 切换。联合回归 18 项通过、1 项联网测试未启用跳过；WebKit 首次恢复竞态修复后 Firefox/WebKit 两项定点重测通过。原有全部基础翻译五项回归通过。
+- 生产 test:offline-dist 新增网络门控：初始阻断所有模型/运行库，确认 UI 和 SW 已就绪且模型请求为零；选择 Lite 后才出现请求，保持设置可用，放行后推理。Chromium 三模型与 Firefox/WebKit Lite 的生产慢网和断网验证通过。未增加原生安装包或真机验收。
+- 最终复测：98 项单元、构建与原 PDF 生产回归通过；生命周期五项中四项一次通过，手机切回阅读时等待文字层重绘的测试时序修正后单项通过。三个内核使用最终缓存策略再次通过慢网/断网生产验证。布局样式、模型二进制、版本和依赖保持不变，部署包仍约 89.4 MiB；工作区原有 `.gitignore` 修改未改动。
+
 ## v0.4.0 同版本修订 · 下载源、取消隔离与本地引擎前缀 · 2026-09-26
 
 - 最终按用户的体积约束恢复 Plus 为原 Xenova/opus-mt-en-zh INT8；未采用 Firefox base，也不再携带 Plus 静态权重。只修改模型清单、下载/取消管理及引擎标签，版本和 npm 依赖不变。
@@ -20,7 +31,7 @@
 
 - `offline/catalog.js` 持有 UI 元数据、可用模型集合与语言映射；`public/offline/manifest.json` 统一描述版本、引擎、下载源、文件角色、大小、SHA-256、压缩和分片。Firefox Lite/base-memory 与 ONNX Plus/Pro 均固定版本，不在运行时追踪 `main`。
 - `offline-translation.js` 管理 Worker RPC、进度、超时、终止及空闲释放；`offline/translation.worker.js` 串行推理。加载器注册表调用 `bergamot.js` / `onnx.js`，后续格式实现新加载器即可，不把所有模型写死为 Marian，也不加载用户提供的可执行代码。
-- UI 先挂载，空闲回调后台加载 Lite。WASM、模型初始化、解压、哈希与推理全部在 Worker 执行。切换模型/取消通过终止旧 Worker 释放堆；完成后闲置 90 秒释放内存，磁盘缓存保留。下载/导入使用独立 Worker，进度约每 120ms 合并，避免频繁刷新主线程。
+- UI 先挂载，只对当前选中的离线引擎安排空闲加载。WASM、模型初始化、解压、哈希与推理全部在 Worker 执行。切换模型/取消通过终止旧 Worker 释放堆；选中时保留待用，切走立即释放内存，磁盘缓存保留。下载/导入使用独立 Worker，进度约每 120ms 合并，避免频繁刷新主线程。
 - 新建 `paper-bridge-offline` v1：`assets` 按 SHA-256 保存已验证 Blob，`installed` 按模型 ID 保存完整安装版本。逐文件校验后写入，最后提交安装标记；失败可复用已完成文件，取消删除该模型部分缓存。删除只涉及离线模型数据库，不碰 `paper-bridge`。
 - `BasicSettings` 嵌入 `OfflineSettings` 折叠模块，复用现有保存流程；`basicOptions` 合并已安装模型，`translation-engine.js` 沿用“机翻高速引擎”，彩色本地图标为下载的 Fluent Emoji 电脑 SVG。桌面与手机样式分别追加到 `desktop.css` / `mobile.css`，通过既有两套导航交互进入共享设置。
 - `Assistant.translateSelection` 仅在当前选择离线基础引擎时绕过在线单词词典，等待分为模型加载与推理两状态。在线词典的后备服务不自动混入新离线引擎。默认基础模型沿用原字段，初始化不因模型清单尚未读完而覆盖已保存的默认值。

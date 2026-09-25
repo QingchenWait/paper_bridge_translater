@@ -152,6 +152,11 @@ for (const modelId of ['offline-plus', 'offline-pro'])
   test(`cancelling ${modelId} removes only its partial cache`, async ({ page }) => {
     await setup(page);
     await page.evaluate(async () => {
+      const { saveSettings } = await import('/src/js/settings.js');
+      await saveSettings({
+        translationEngine: 'online',
+        basicTranslation: { defaultProvider: 'offline-lite' },
+      });
       const { offlineTranslate } = await import('/src/js/offline-translation.js');
       await offlineTranslate('A local model.', { provider: 'offline-lite', source: 'en', target: 'zh-CN' });
     });
@@ -222,6 +227,11 @@ test('live ModelScope OPUS download and NLLB browser CORS', async ({ page }) => 
     const registry = await fetch('/offline/manifest.json').then((r) => r.json());
     const { manageOfflineModel, offlineTranslate } = await import('/src/js/offline-translation.js');
     await manageOfflineModel('offline-plus', 'install');
+    const { saveSettings } = await import('/src/js/settings.js');
+    await saveSettings({
+      translationEngine: 'online',
+      basicTranslation: { defaultProvider: 'offline-plus' },
+    });
     const text = await offlineTranslate('This paper presents a new method.', {
       provider: 'offline-plus',
       source: 'en',
@@ -259,6 +269,11 @@ for (const name of ['firefox', 'webkit'])
       const page = await context.newPage();
       await page.goto(baseURL);
       const result = await page.evaluate(async () => {
+        const { saveSettings } = await import('/src/js/settings.js');
+        await saveSettings({
+          translationEngine: 'online',
+          basicTranslation: { defaultProvider: 'offline-lite' },
+        });
         const { offlineTranslate } = await import('/src/js/offline-translation.js');
         return offlineTranslate('This paper presents a new method.', {
           provider: 'offline-lite',
@@ -296,6 +311,8 @@ test('real optional OPUS/NLLB import, inference, reload and deletion', async ({ 
       timeout: 180000,
     });
     const translated = await page.evaluate(async (id) => {
+      const { saveSettings } = await import('/src/js/settings.js');
+      await saveSettings({ translationEngine: 'online', basicTranslation: { defaultProvider: id } });
       const { offlineTranslate } = await import('/src/js/offline-translation.js');
       return offlineTranslate(
         id === 'offline-pro' ? 'Bonjour le monde.' : 'This paper presents a new method.',

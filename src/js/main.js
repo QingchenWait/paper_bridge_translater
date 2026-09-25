@@ -66,7 +66,6 @@ class App {
     installPdfRuntime();
     installAppleWebKit();
     this.mount();
-    startOfflineTranslation();
     this.library = new LibraryView(this, document.getElementById('library-view'));
     this.openPdfMenu = new OpenPdfMenu(this);
     window.addEventListener('storage-blocked', () =>
@@ -128,6 +127,7 @@ class App {
     this.renderTabs();
     this.renderToolbar();
     await this.assistant.render();
+    startOfflineTranslation();
     if (this.openIds.length)
       await this.openDocument(
         this.openIds.includes(workspace?.activeId) ? workspace.activeId : this.openIds[0],

@@ -6,7 +6,10 @@ let sequence = 0,
   inference,
   management,
   loadedId,
-  idleTimer;
+  selectedModelId,
+  scheduledLoad,
+  uiReady = false,
+  started = false;
 const jobs = new Map();
 const downloads = new Map();
 const subscribers = new Set();
@@ -67,22 +70,62 @@ class WorkerClient {
     this.pending.clear();
   }
 }
+function releaseInference() {
+  inference?.close();
+  inference = null;
+  loadedId = null;
+}
 function inferenceFor(id) {
-  clearTimeout(idleTimer);
   if (loadedId !== id || inference?.closed) {
-    inference?.close();
-    inference = null;
+    releaseInference();
   }
   loadedId = id;
   return (inference ||= new WorkerClient());
 }
-function releaseLater() {
-  idleTimer = setTimeout(() => {
-    if (!inference?.pending.size) {
-      inference?.close();
-      inference = null;
-    }
-  }, 90000);
+function cancelScheduledLoad() {
+  scheduledLoad?.();
+  scheduledLoad = null;
+}
+function scheduleSelectedModel() {
+  cancelScheduledLoad();
+  if (!uiReady || !selectedModelId) return;
+  const id = selectedModelId;
+  const load = () => {
+    scheduledLoad = null;
+    if (selectedModelId !== id) return;
+    let client;
+    try {
+      client = inferenceFor(id);
+    } catch {
+      return;
+    } // A missing Worker API must not affect unrelated controls.
+    // Selection and the first translation may arrive together. Share one worker.
+    if (client.preloading) return;
+    client.preloading = client.call('load', id).catch(() => {
+      client.close();
+      if (inference === client) releaseInference();
+      // Loading errors are shown by a translation request, never block the UI.
+    });
+  };
+  if ('requestIdleCallback' in window) {
+    const handle = window.requestIdleCallback(load, { timeout: 1000 });
+    scheduledLoad = () => window.cancelIdleCallback?.(handle);
+  } else {
+    const handle = setTimeout(load, 0);
+    scheduledLoad = () => clearTimeout(handle);
+  }
+}
+function syncSelectedModel(settings) {
+  const id =
+    settings.translationEngine === 'online' && isOfflineModel(settings.basicTranslation?.defaultProvider)
+      ? settings.basicTranslation.defaultProvider
+      : null;
+  if (selectedModelId === id) return;
+  selectedModelId = id;
+  cancelScheduledLoad();
+  // Startup may catch up with a first translation already using this model.
+  if (loadedId !== id) releaseInference();
+  scheduleSelectedModel();
 }
 function manager() {
   if (management?.closed) management = null;
@@ -117,8 +160,8 @@ export async function manageOfflineModel(id, action, files) {
   downloads.set(id, client);
   try {
     if (action === 'delete' && loadedId === id) {
-      inference?.close();
-      inference = null;
+      cancelScheduledLoad();
+      releaseInference();
     }
     await client.call(action, id, {
       files,
@@ -150,10 +193,15 @@ export async function cancelOfflineModel(id) {
   }
 }
 export async function offlineTranslate(text, { provider, source, target, signal, onProgress }) {
+  signal?.throwIfAborted();
   validateDirection(provider, source, target);
+  // A stale selection/dictionary request must not resurrect an unloaded model.
+  if (started && selectedModelId !== provider)
+    throw new DOMException('当前未选择此本地离线引擎', 'AbortError');
   onProgress?.('loading');
+  const client = inferenceFor(provider);
   try {
-    return await inferenceFor(provider).call('translate', provider, {
+    return await client.call('translate', provider, {
       text,
       source,
       target,
@@ -161,27 +209,33 @@ export async function offlineTranslate(text, { provider, source, target, signal,
       progress: ({ phase }) => onProgress?.(phase),
     });
   } finally {
-    releaseLater();
+    // An explicitly requested one-off translation has no reason to stay resident.
+    if (inference === client && selectedModelId !== provider && !client.pending.size) releaseInference();
   }
 }
 export function startOfflineTranslation() {
-  const start = () => {
+  if (started) return;
+  started = true;
+  let selectionRevision = 0;
+  document.addEventListener('settings-changed', ({ detail }) => {
+    selectionRevision++;
+    syncSelectedModel(detail);
+  });
+  getSettings()
+    .then((settings) => {
+      if (selectionRevision === 0) syncSelectedModel(settings);
+    })
+    .catch(() => {});
+  const afterPageLoad = () => {
+    uiReady = true;
+    // Only lightweight availability metadata is read here; no inference runtime.
     refreshOfflineModels().catch(() => {});
-    if (!inference) {
-      const client = inferenceFor('offline-lite');
-      client
-        .call('load', 'offline-lite')
-        .catch(() => {
-          client.close();
-          if (inference === client) inference = null;
-        })
-        .finally(releaseLater);
-    }
+    scheduleSelectedModel();
+    if (import.meta.env.PROD && 'serviceWorker' in navigator && window.isSecureContext)
+      navigator.serviceWorker
+        .register(new URL('sw.js', new URL(import.meta.env.BASE_URL, document.baseURI)))
+        .catch(() => {});
   };
-  if ('requestIdleCallback' in window) window.requestIdleCallback(start, { timeout: 2500 });
-  else setTimeout(start, 500);
-  if (import.meta.env.PROD && 'serviceWorker' in navigator && window.isSecureContext)
-    navigator.serviceWorker
-      .register(new URL('sw.js', new URL(import.meta.env.BASE_URL, document.baseURI)))
-      .catch(() => {});
+  if (document.readyState === 'complete') afterPageLoad();
+  else window.addEventListener('load', afterPageLoad, { once: true });
 }

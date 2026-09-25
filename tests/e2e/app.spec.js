@@ -682,7 +682,7 @@ test('mobile selection remains available for annotations and compact translation
   await page.locator('[data-mobile-pane="assistant"]').click();
   await expect(page.locator('#selection-result')).toContainText('手机端译文');
   await page.getByRole('button', { name: '翻译引擎', exact: true }).click();
-  await expect(page.getByRole('option', { name: 'MyMemory · 在线翻译' })).toBeVisible();
+  await expect(page.getByRole('option', { name: 'MyMemory (额度有限)' })).toBeVisible();
   await page.screenshot({ path: 'test-results/mobile-translation-popover.png', animations: 'disabled' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

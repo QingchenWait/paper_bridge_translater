@@ -2,6 +2,8 @@
 
 ## v0.4.0 离线翻译资源
 
+2026-09-26 加载策略修订不新增第三方依赖或二进制。Worker 终止与空闲调度参考 [Worker.terminate](https://developer.mozilla.org/en-US/docs/Web/API/Worker/terminate)、[requestIdleCallback](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestIdleCallback)；静态 shell 与按需运行库缓存参考 [Service Worker 用法](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers)。不使用 requestIdleCallback 的平台回退 setTimeout；CacheStorage 不可用时保留本地静态加载。
+
 以下资源在 2026-09-25 至 2026-09-26 核实并固定到 `public/offline/manifest.json`，下载后按大小与 SHA-256 校验；不在推理时调用 CDN。模型权重是独立文件，不嵌入主 JavaScript bundle。
 
 | 资源 | 来源、版本及用途 | 许可证 |

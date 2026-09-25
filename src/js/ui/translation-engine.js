@@ -9,7 +9,7 @@ export function translationEngines(settings) {
   return [
     ...basicOptions(settings.basicTranslation).map(([id, name]) => ({
       key: id === 'mymemory' ? 'online' : `basic:${id}`,
-      name: isOfflineModel(id) ? `本地引擎 · ${name}` : id === 'mymemory' ? 'MyMemory · 在线翻译' : name,
+      name: isOfflineModel(id) ? `本地引擎 · ${name}` : id === 'mymemory' ? 'MyMemory (额度有限)' : name,
       brand: isOfflineModel(id) ? 'local' : id === 'mymemory' ? 'meta' : id,
       kind: '机翻',
     })),

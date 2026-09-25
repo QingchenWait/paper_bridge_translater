@@ -146,10 +146,11 @@ v0.3.1 修复 Noto 字体子集编码，保留原始 NotoSansSC 字体和字形�
 
 以上为完整所需权重、配置和词表大小，另有约 24 MiB 共享推理运行库。Pro 支持当前菜单中的简中、繁中、英、日、韩、法、德、西八种语言，需明确选择原文语言；“中英翻译”是栏目名称，Lite/Plus **不支持中文→英文**。Pro 的运行内存明显高于文件大小，优先在内存充足的电脑上使用；手机、平板建议 Lite。三者是机器翻译模型，不具备聊天或执行提示词能力，也不保证每篇论文的术语准确。
 
-1. 首次打开先显示界面，再由 Worker 后台准备 Lite。加载期间仍可阅读和使用其他翻译 API；选用 Lite 后划词，结果区会先显示环形动画“离线机翻模型加载中”，准备完成后显示“正在理解这段文字…”。
-2. Plus 和 Pro 均从 ModelScope 的固定版本下载，不使用存在浏览器 CORS 限制的回退站点。所有文件通过大小与 SHA-256 校验后，才显示“已下载”、替换为“删除”按钮并加入下拉菜单。下载失败保留已校验文件供重试；“取消”会终止下载 Worker，事务删除该模型已下载的文件和安装标记；不清空数据库，不更改 PDF、批注、聊天、密钥或其他设置，其他模型和共享运行库保留。
-3. 无法访问 ModelScope 时，可在其他设备按清单下载并点“导入”：Plus、Pro 分别选择各自的六个文件：`config.json`、`generation_config.json`、`tokenizer.json`、`tokenizer_config.json`、`encoder_model_quantized.onnx`、`decoder_model_merged_quantized.onnx`。无需 Python 转换；`.gz` 会自动解压校验。不同版本、其他精度、PyTorch 权重或任意自定义模型不能冒充当前模型导入。
-4. 在默认基础翻译下拉或右上“翻译引擎 → 机翻高速引擎”中选择离线模型，使用彩色本地电脑图标，并在主界面下拉中显示“本地引擎 · 模型名”。单词与句子均走本机推理，不请求在线词典；在线引擎原有词典行为不变。删除正在选用的 Plus/Pro 会将基础默认值切回 Lite。
+1. 进入 APP 先加载界面。当前引擎是在线 API 或 LLM 时，Lite/Plus/Pro 都不加载，也不自动请求其权重和 WASM/ONNX 运行库。若上次已选中某个本地引擎，页面可操作后只在 Worker 中准备该模型；其他模型不加载。
+2. 在右栏“翻译引擎”选择本地模型后，会后台加载并保持待用；模型加载不阻塞设置、PDF 阅读或其他 API。加载未完成就划词，结果区显示“离线机翻模型加载中”，准备完成后显示“正在理解这段文字…”。切换到其他本地模型、在线 API 或 LLM，会立即终止旧模型 Worker（包括加载中的任务），释放其运行内存；模型文件仍留在本地，下次选中可从缓存重载。
+3. Plus 和 Pro 均从 ModelScope 的固定版本下载，不使用存在浏览器 CORS 限制的回退站点。所有文件通过大小与 SHA-256 校验后，才显示“已下载”、替换为“删除”按钮并加入下拉菜单。下载失败保留已校验文件供重试；“取消”会终止下载 Worker，事务删除该模型已下载的文件和安装标记；不清空数据库，不更改 PDF、批注、聊天、密钥或其他设置，其他模型和共享运行库保留。
+4. 无法访问 ModelScope 时，可在其他设备按清单下载并点“导入”：Plus、Pro 分别选择各自的六个文件：`config.json`、`generation_config.json`、`tokenizer.json`、`tokenizer_config.json`、`encoder_model_quantized.onnx`、`decoder_model_merged_quantized.onnx`。无需 Python 转换；`.gz` 会自动解压校验。不同版本、其他精度、PyTorch 权重或任意自定义模型不能冒充当前模型导入。
+5. 在默认基础翻译下拉或右上“翻译引擎 → 机翻高速引擎”中选择离线模型，使用彩色本地电脑图标，并在主界面下拉中显示“本地引擎 · 模型名”。单词与句子均走本机推理，不请求在线词典；在线引擎原有词典行为不变。删除正在选用的 Plus/Pro 会将基础默认值切回 Lite。
 
 模型数据独立保存在 `paper-bridge-offline` 数据库，删除模型不会删除 PDF、批注、聊天、API Key 或其他设置。模型权重不包含在用户备份/云同步中；更换设备需重新下载或导入，备份中的默认模型偏好仍保留。浏览器主动清理站点数据、隐私模式及磁盘配额可能清除或拒绝缓存，网页不能保证模型永远不被系统回收。
 
@@ -157,8 +158,8 @@ v0.3.1 修复 Noto 字体子集编码，保留原始 NotoSansSC 字体和字形�
 
 `dist/` 仅预置 Lite 和推理运行库，Plus/Pro 权重不随包分发，部署包仍约 89.4 MiB。Lite 在浏览器中只读取同源静态资源，不依赖大陆网络访问 Mozilla 或 Google 下载站；离线本地部署直接使用随包文件。Lite 原始 `.gz` 在构建准备阶段解压，最大权重拆成 16 MiB 片段，模型不进入 JavaScript bundle。准备脚本只在文件缺失或损坏时尝试固定镜像和官方源，逐源解压并校验；这些构建期来源不作为浏览器跨域模型下载接口。
 
-- **静态网站**：通过 HTTPS 或 `localhost/127.0.0.1` 打开生产构建，首次在线等待后台资源与 Lite 缓存完成，之后可断网重载。Service Worker 仅缓存站点静态文件，权重由独立 IndexedDB 保存；开发模式不注册 Service Worker。网站更新会等待旧标签关闭后激活，升级只清理本应用旧静态缓存。
-- **无外网本地部署**：在电脑上用本地静态服务提供整个 `dist/`；Tauri 可使用 `frontendDist: "../dist"` 将同一目录随包携带，Lite 在首次启动就可从包内资源准备，不需先联网。Plus/Pro 可通过文件导入。不要只复制 `index.html`，也不要使用 `file://` 双击运行。
+- **静态网站**：通过 HTTPS 或 `localhost/127.0.0.1` 打开生产构建，首次在线完成页面静态资源缓存后即可断网打开界面，无需等待 Lite。要离线翻译，需先选中相应本地模型完成一次准备；Plus/Pro 也可显式下载或导入。Service Worker 安装时不预缓存 Bergamot/ONNX 运行库，运行库只在选中模型或显式下载/导入时进入独立按需缓存，权重仍由独立 IndexedDB 保存；开发模式不注册 Service Worker。网站更新会等待旧标签关闭后激活，升级只清理本应用旧静态缓存。
+- **无外网本地部署**：在电脑上用本地静态服务提供整个 `dist/`；Tauri 可使用 `frontendDist: "../dist"` 将同一目录随包携带，Lite 在被选中时从包内资源准备，不需先联网。Plus/Pro 可通过文件导入。不要只复制 `index.html`，也不要使用 `file://` 双击运行。
 - **Tauri 宿主**：需使用支持模块 Worker、WebAssembly、IndexedDB 的系统 WebView；静态协议需正确提供 JS/MJS/WASM MIME 类型。如果宿主启用 CSP，须允许本地 Worker、模块、WASM 编译与静态资源请求；无需 WebGPU、SharedArrayBuffer 或 COOP/COEP。Service Worker 不可用的自定义协议仍可读取随包资源。本项目未新增原生工程、未制作或真机验证 Tauri 安装包。
 - **兼容性**：CPU 单线程 Worker，在支持相应 WASM 能力的现代 Chrome/Edge、Firefox、Safari/WebView 上运行。Mozilla 预编译 Bergamot 包含 SIMD/原子指令，不能声称是无 SIMD 的最低版本 WASM；启动前会检测模块能力，不支持时明确报错。ONNX 使用支持标量回退的固定浏览器运行库。不承诺所有历史浏览器、低内存设备均能加载 Pro；不支持时可使用 Lite 或升级浏览器。
 
@@ -287,7 +288,7 @@ npm run test:offline-dist
 
 端到端测试优先使用 Windows 已安装的 Chrome；其他平台可安装 Chromium，或设置 `PLAYWRIGHT_CHROMIUM_EXECUTABLE`。运行完整用例前执行 `npx playwright install chromium webkit firefox`，Apple 用例使用独立临时 WebKit 资料。测试使用合成 PDF 与用户指定的 `tests/1-s2.0-S0950705126003436-main.pdf` 性能样本，不读取其他个人文档、Key 或浏览器资料。缺少该样本时自动跳过对应性能用例；PDF 只在本地渲染，不上传到外部服务。外部 API 回归使用可控响应；FreeDictionaryAPI/3325 已实测浏览器跨域获取公开词条，有道已实测原生式请求可返回、网页 Origin 被拒绝。当前客户端入口以模拟宿主验证，尚未联调原生安装包或 CORS 代理。
 
-`test:dist` 检查生产子路径、本地 PDF/Markdown Worker、中文导出、恢复及长译文公式；环境变量 `PAPER_BRIDGE_SMOKE_ENGINE=webkit` 可切换 WebKit。本次 v0.4.0 修订已通过 95 项单元测试；完整浏览器回归首轮 118 项通过，5 项因新增 Lite 选项及后台 Worker 导致的旧断言已更新并定点复测通过，可选大模型用例另使用真实权重通过。三内核生产 Lite 断网测试通过。上一版本长译文性能优化继续保留，极长且公式密集的段落仍受设备排版性能影响。自动化不等同于所有真机与历史浏览器版本，详情见 DEVELOP.md。
+`test:dist` 检查生产子路径、本地 PDF/Markdown Worker、中文导出、恢复及长译文公式；环境变量 `PAPER_BRIDGE_SMOKE_ENGINE=webkit` 可切换 WebKit。本次 v0.4.0 加载策略修订已通过 98 项单元测试；完整浏览器回归首轮 118 项通过，5 项因新增 Lite 选项及后台 Worker 导致的旧断言已更新并定点复测通过，可选大模型用例另使用真实权重通过。三内核生产 Lite 断网测试通过。上一版本长译文性能优化继续保留，极长且公式密集的段落仍受设备排版性能影响。自动化不等同于所有真机与历史浏览器版本，详情见 DEVELOP.md。
 
 `npm run format` 只格式化应用、样式、工具与测试，不修改用户提供的 UI 规则或参考项目。v0.4.0 生产构建约 89.4 MiB，其中包含 Lite、独立 WASM/ONNX 运行库、PDF 资源和中文导出字体；Plus/Pro 权重不随包分发，两者共用现有 ONNX 运行库。只有实际导出时执行 PDF 编辑模块。离线生产测试覆盖子路径、真实 Lite 推理、缓存、断开源站后重载、PDF 和默认引擎恢复；设置 `PAPER_BRIDGE_SMOKE_ENGINE=firefox` 或 `webkit` 可切换测试内核。真实 Plus/Pro 浏览器用例需设置 `PAPER_BRIDGE_TEST_MODEL_DIR`，目录下放置清单固定版本的 `offline-plus/`、`offline-pro/` 文件；默认跳过此约 1 GiB 测试数据，详见 DEVELOP.md。
 

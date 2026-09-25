@@ -6,9 +6,18 @@ import { chromium, firefox, webkit, expect } from '@playwright/test';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 
 const root = resolve('dist');
+let releaseModelAssets;
+const modelGate = new Promise((done) => {
+  releaseModelAssets = done;
+});
+const modelRequests = [];
 const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url, 'http://localhost');
+    if (/\/offline\/(?:lite|bergamot|onnx)\//.test(url.pathname)) {
+      modelRequests.push(url.pathname);
+      await modelGate;
+    }
     if (!url.pathname.startsWith('/paper-bridge/')) throw new Error('Path');
     const target = resolve(
       root,
@@ -83,6 +92,17 @@ try {
   );
   await page.getByRole('checkbox', { name: '不再显示', exact: true }).check();
   await page.getByRole('button', { name: '直接进入 APP' }).click();
+  // A cold visit using an online engine must cache the UI without any model traffic.
+  await page.waitForFunction(
+    async () => {
+      const registration = await navigator.serviceWorker.getRegistration();
+      return registration?.active && navigator.serviceWorker.controller;
+    },
+    null,
+    { timeout: 30000 },
+  );
+  if (modelRequests.length)
+    throw new Error(`Startup unexpectedly requested model assets: ${modelRequests.join(', ')}`);
   const pdf = await PDFDocument.create(),
     font = await pdf.embedFont(StandardFonts.Helvetica);
   pdf
@@ -116,6 +136,12 @@ try {
       }),
     )
     .toBe('offline-lite');
+  await expect.poll(() => modelRequests.length, { timeout: 15000 }).toBeGreaterThan(0);
+  await page.locator('.sidebar [data-action=settings]').click();
+  await page.getByRole('button', { name: '基础翻译功能', exact: true }).click();
+  await expect(page.getByRole('button', { name: '默认基础翻译模型', exact: true })).toBeEnabled();
+  await page.keyboard.press('Escape');
+  releaseModelAssets();
   const translate = async (expectedEngine) => {
     await page.evaluate(() => {
       const span = document.querySelector('.textLayer span');
@@ -188,9 +214,10 @@ try {
   await page.screenshot({ path: `test-results/offline-production-${name}.png` });
   if (errors.length || external.length) throw new Error(JSON.stringify({ errors, external }));
   console.log(
-    `Offline production passed (${name}): nested static path, real ${optional.length ? 'Lite/Plus/Pro' : 'Lite'} translation, cached shell and model, origin shut down before reload, preserved PDF and engine preference; no external requests.`,
+    `Offline production passed (${name}): UI/SW ready with model requests blocked, model assets only after selection, real ${optional.length ? 'Lite/Plus/Pro' : 'Lite'} translation, origin shut down before reload, preserved PDF and engine preference; no external requests.`,
   );
 } finally {
+  releaseModelAssets();
   await context.close();
   if (server.listening) await new Promise((done) => server.close(done));
 }

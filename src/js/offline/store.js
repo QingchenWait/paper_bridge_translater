@@ -1,6 +1,7 @@
 import { openDB } from 'idb';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { gunzipSync } from 'fflate';
+import { cacheRuntimeAsset } from './runtime-cache.js';
 
 const db = () =>
   openDB('paper-bridge-offline', 1, {
@@ -142,8 +143,11 @@ export async function installModel(model, manifest, base, files, progress) {
   if (estimate?.quota && estimate.quota - estimate.usage < missingBytes * 1.1)
     throw new Error('可用存储空间不足，请释放空间后重试。已有文档不会被清理。');
   let completed = 0;
-  for (const asset of manifest.runtimes.filter((a) => a.engine === model.engine))
-    await loadAsset(asset, base);
+  for (const asset of manifest.runtimes.filter((a) => a.engine === model.engine)) {
+    const blob = await loadAsset(asset, base);
+    // Explicit download/import prepares disk resources without instantiating a model.
+    await cacheRuntimeAsset(asset.path, blob, base, manifest);
+  }
   for (const file of model.files) {
     progress({ phase: 'download', bytes: completed, total });
     const cached = await getAsset(file);

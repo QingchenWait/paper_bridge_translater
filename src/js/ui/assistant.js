@@ -267,7 +267,11 @@ export class Assistant {
           },
         });
     } catch (error) {
-      if (!controller.signal.aborted) entry.error = errorMessage(error);
+      const switchedOffline =
+        settings.translationEngine === 'online' &&
+        isOfflineModel(settings.basicTranslation.defaultProvider) &&
+        error?.name === 'AbortError';
+      if (!controller.signal.aborted && !switchedOffline) entry.error = errorMessage(error);
     } finally {
       entry.loading = false;
       refresh();

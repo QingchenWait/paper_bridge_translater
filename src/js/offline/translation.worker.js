@@ -2,6 +2,7 @@ import { installedModels, installModel, removeModel, loadAsset } from './store.j
 import { validateDirection } from './catalog.js';
 import { createBergamot } from './bergamot.js';
 import { createOnnx } from './onnx.js';
+import { cacheRuntimeAsset, cacheBergamotModule } from './runtime-cache.js';
 
 const loaders = { bergamot: createBergamot, onnx: createOnnx };
 let manifestPromise, activeModel, engine;
@@ -37,8 +38,11 @@ async function handle({ id, type, modelId, base, text, source, target, files }) 
         if (!model.bundled && !(await installedModels(registry)).includes(modelId))
           throw new Error('请先完整下载或导入该离线模型。');
         // Prepare local assets before executing the matching runtime.
-        for (const file of registry.runtimes.filter((f) => f.engine === model.engine))
-          await loadAsset(file, base);
+        for (const file of registry.runtimes.filter((f) => f.engine === model.engine)) {
+          const blob = await loadAsset(file, base);
+          await cacheRuntimeAsset(file.path, blob, base, registry);
+        }
+        if (model.engine === 'bergamot') await cacheBergamotModule(base, registry);
         engine = await loaders[model.engine](model, registry, base);
         activeModel = modelId;
       }
