@@ -65,6 +65,8 @@ try {
   }
   const page = await context.newPage();
   const failures = [];
+  const workers = [];
+  page.on('worker', (worker) => workers.push(worker.url()));
   page.on('pageerror', (e) => failures.push(e.message));
   page.on('response', (response) => {
     if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`);
@@ -119,6 +121,41 @@ try {
     .locator('.mark-highlight')
     .evaluate((el) => getComputedStyle(el).backgroundColor);
   if (highlightColor !== 'rgb(255, 224, 130)') throw new Error(`Highlight not visible: ${highlightColor}`);
+  await page.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('paper-bridge');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      const tx = db.transaction(['documents', 'translations'], 'readwrite');
+      const request = tx.objectStore('documents').getAll();
+      request.onsuccess = () => {
+        const doc = request.result[0];
+        tx.objectStore('translations').put({
+          id: 'production-render',
+          documentId: doc.id,
+          rootId: doc.rootId,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          status: 'complete',
+          content: '# 静态全文验证\n\n' + '正文 **重点** 与公式 $x^2$。'.repeat(200) + '\n\n## 完整结尾',
+        });
+      };
+      await new Promise((resolve, reject) => {
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+    } finally {
+      db.close();
+    }
+  });
+  await page.getByRole('tab', { name: '全文翻译', exact: true }).click();
+  await page.locator('#full-result h2').filter({ hasText: '完整结尾' }).waitFor({ state: 'attached' });
+  if ((await page.locator('#full-result .katex').count()) !== 200)
+    throw new Error('Incomplete Markdown formulas');
+  if (!workers.some((url) => url.includes('markdown.worker')))
+    throw new Error('Markdown worker did not load');
   await mkdir('test-results', { recursive: true });
   await page.screenshot({ path: 'test-results/production-preview.png', animations: 'disabled' });
   if (failures.length) throw new Error(failures.join('\n'));
@@ -140,7 +177,7 @@ try {
   }
   const info = await total(root);
   console.log(
-    `Production smoke passed (${appleSmoke ? 'WebKit' : 'Chromium'}): nested static path, local worker/assets, PDF upload, Chinese annotation export (${bytes.length} bytes), persistence and highlighting. ${info.count} deployment files, ${(info.size / 1024 / 1024).toFixed(1)} MiB total.`,
+    `Production smoke passed (${appleSmoke ? 'WebKit' : 'Chromium'}): nested static path, local PDF/Markdown workers, PDF upload, Chinese annotation export (${bytes.length} bytes), persistence, highlighting and long Markdown formulas. ${info.count} deployment files, ${(info.size / 1024 / 1024).toFixed(1)} MiB total.`,
   );
 } finally {
   await context?.close();

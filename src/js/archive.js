@@ -6,6 +6,7 @@ import { validateFolderTree } from './library.js';
 import { sha256, safeUrl, bytesToBase64 } from './utils.js';
 import { getSettings, saveSettings, reloadSettings, flushSettings } from './settings.js';
 import { flushAnnotations } from './annotation-writes.js';
+import { flushTranslationWrites } from './translation-writes.js';
 const MAGIC = strToU8('PBRIDGE1');
 const MAX_ARCHIVE = 1024 * 1024 * 1024;
 function makeZip(files) {
@@ -14,7 +15,7 @@ function makeZip(files) {
   );
 }
 export async function createArchive({ includeSecrets = true, password = '' } = {}) {
-  await Promise.all([flushSettings(), flushAnnotations()]);
+  await Promise.all([flushSettings(), flushAnnotations(), flushTranslationWrites()]);
   const data = await snapshot();
   const entries = {};
   const digests = {};

@@ -347,7 +347,7 @@ export async function openSettings(app, tab = 'api') {
         toast('云端和本地数据已合并同步');
       });
     } else {
-      content.innerHTML = `<h3>纸间 · 文献翻译 & AI 分析 <span class="badge">0.3.4</span></h3><p>青尘工作室出品 :: LLM 划词翻译 | PDF 标注编辑 | AI 文献问答</p><div class="help-list"><p><b>选词与翻译</b><br>在 PDF 上拖选文字，单词进入在线词典，多词句子进入翻译。点击工具栏按钮可添加批注。</p><p><b>全文翻译</b><br>文件输入需接口支持。普通模型会接收提取后的完整文字；扫描件需要支持 PDF 的视觉模型。模型原生 PDF 需支持代码执行与文件输出，也可选择本地排版（视觉 PDF，无文字层）。</p><p><b>快捷键</b><br>Ctrl / ⌘ + O 打开文档 · Ctrl / ⌘ + Z 撤销批注 · Ctrl / ⌘ + Shift + Z 重做 · Esc 关闭菜单</p><p><b>数据与连接</b><br>文档默认只存本机。翻译或问答时将选定文本 / 文档发送给所选服务商。在线词典使用 Free Dictionary、Wiktionary，并支持 FreeDictionaryAPI、3325 备选及客户端有道；英文详细释义通过基础翻译 API 转成中文。基础翻译支持 MyMemory、Google 和三家云 API，可在“基础翻译功能”中配置，存在网络与额度限制。</p><p><b>开源致谢</b><br>PDF.js · pdf-lib · KaTeX · Lucide · Fluent Emoji · Noto Sans<br>设置及存档流程继承海姆休息室（https://fritia.online）。</p></div>`;
+      content.innerHTML = `<h3>纸间 · 文献翻译 & AI 分析 <span class="badge">0.3.5</span></h3><p>青尘工作室出品 :: LLM 划词翻译 | PDF 标注编辑 | AI 文献问答</p><div class="help-list"><p><b>选词与翻译</b><br>在 PDF 上拖选文字，单词进入在线词典，多词句子进入翻译。点击工具栏按钮可添加批注。</p><p><b>全文翻译</b><br>文件输入需接口支持。普通模型会接收提取后的完整文字；扫描件需要支持 PDF 的视觉模型。模型原生 PDF 需支持代码执行与文件输出，也可选择本地排版（视觉 PDF，无文字层）。</p><p><b>快捷键</b><br>Ctrl / ⌘ + O 打开文档 · Ctrl / ⌘ + Z 撤销批注 · Ctrl / ⌘ + Shift + Z 重做 · Esc 关闭菜单</p><p><b>数据与连接</b><br>文档默认只存本机。翻译或问答时将选定文本 / 文档发送给所选服务商。在线词典使用 Free Dictionary、Wiktionary，并支持 FreeDictionaryAPI、3325 备选及客户端有道；英文详细释义通过基础翻译 API 转成中文。基础翻译支持 MyMemory、Google 和三家云 API，可在“基础翻译功能”中配置，存在网络与额度限制。</p><p><b>开源致谢</b><br>PDF.js · pdf-lib · KaTeX · Lucide · Fluent Emoji · Noto Sans<br>设置及存档流程继承海姆休息室（https://fritia.online）。</p></div>`;
     }
     bindSelects(content);
   };

@@ -675,6 +675,28 @@ img {
 .pdf-page .textLayer {
   z-index: 2;
 }
+.pdf-internal-links {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+.pdf-internal-link {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 2px;
+}
+.pdf-internal-link:focus-visible,
+.pdf-internal-link.is-hovered {
+  outline: 1px solid #7b74ef;
+  background: #8297ed20;
+}
+.over-pdf-link .textLayer span {
+  cursor: pointer;
+}
+.pdf-scroll:not([data-tool='select']) .pdf-internal-links {
+  visibility: hidden;
+}
 .textLayer ::selection {
   background: #8297ed60;
 }
@@ -1901,6 +1923,17 @@ img {
 }
 .full-result {
   padding-top: 0.7rem;
+}
+.full-markdown-block {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 8rem;
+}
+.full-markdown-block:has(> :only-child) {
+  /* Keep the original Markdown block margins in the scroll layout. */
+  display: flow-root;
+}
+.full-result .full-markdown-block:not(:first-child) > :is(h1, h2, h3):first-child {
+  margin-top: 1.4em;
 }
 .markdown {
   font-size: 0.94rem;

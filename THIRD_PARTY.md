@@ -26,6 +26,9 @@ v0.3.3 从同一 Lobe Icons 固定提交下载 `meta-color`、`google-color`、`
 
 ## PDF 注释参考与验证
 
+- v0.3.5 内链参照 [PDFPageProxy.getAnnotations](https://mozilla.github.io/pdf.js/api/draft/module-pdfjsLib-PDFPageProxy.html) 及本地 6.3.289 PageViewport/LinkAnnotationElement 源码；按其原始目标与坐标跳转，复用兼容主库/Worker。
+- 长译文参照 [markdown-it token 架构](https://github.com/markdown-it/markdown-it/blob/master/docs/architecture.md) 拆分渲染工作，完整解析仍使用锁定的原库；[content-visibility](https://developer.mozilla.org/en-US/docs/Web/CSS/content-visibility) 仅作屏幕外绘制的渐进增强，旧浏览器仍保留完整 DOM。
+
 - [PDF.js 官方浏览器兼容说明](https://github.com/mozilla/pdf.js/wiki/Frequently-Asked-Questions#which-browsersenvironments-are-supported)：常规构建面向最新浏览器，legacy 构建提供转换及能力补齐。本项目复用相同锁定版本的 legacy/core-js，修正原先只在 Apple 启用、遗漏 Chromium 142 的能力覆盖；没有修改上游包或降低 PDF 版本。
 
 - [Adobe 发布的 ISO 32000-1 PDF 参考](https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf)，12.5.6.10 / 12.5.6.13 / 12.5.6.14：文字标记注释、Contents、QuadPoints、Ink/InkList 和 Popup/Parent。

@@ -13,6 +13,8 @@ import { cleanPdfText, isSingleWord, CLEANING_INSTRUCTIONS } from '../text.js';
 import { lookupWord, onlineTranslate, LANGUAGES } from '../translation.js';
 import { BASIC_APIS, basicOptions } from '../basic-translation.js';
 import { mountMarkdown } from '../markdown.js';
+import { FullMarkdown } from '../full-markdown.js';
+import { TranslationWriter } from '../translation-writes.js';
 import { uid, esc, dateLabel, errorMessage, chooseSaveTarget, saveFile } from '../utils.js';
 import {
   icon,
@@ -64,6 +66,10 @@ export class Assistant {
   }
   async render() {
     const epoch = ++this.epoch;
+    if (this.tab !== 'full') {
+      this.fullRenderer?.destroy();
+      this.fullRenderer = null;
+    }
     const settings = await getSettings();
     this.renderEngine(settings);
     this.readingFonts.update(settings);
@@ -293,6 +299,8 @@ export class Assistant {
   async renderFull(epoch) {
     const doc = this.app.active;
     if (!doc) {
+      this.fullRenderer?.destroy();
+      this.fullRenderer = null;
       this.root.innerHTML = this.needsDocument('先打开一份 PDF', '在这里，将整篇文档译成你熟悉的语言。');
       return;
     }
@@ -305,6 +313,11 @@ export class Assistant {
     const latest = job?.record || records[0];
     const panel = this.fullPanels.get(doc.id) || { collapsed: false, autoCollapsed: false };
     this.fullPanels.set(doc.id, panel);
+    const preserved = latest && this.fullRenderer?.recordId === latest.id ? this.fullRenderer.host : null;
+    if (!latest) {
+      this.fullRenderer?.destroy();
+      this.fullRenderer = null;
+    }
     this.root.innerHTML = `<div class="full-content"><div class="full-summary" ${panel.autoCollapsed ? '' : 'hidden'}><span class="full-summary-progress ${job ? 'working' : ''}" role="${job ? 'progressbar' : 'status'}" aria-label="全文翻译进度"></span><span data-full-stage>${esc(job?.stage || (latest?.status === 'complete' ? '翻译完成' : '部分结果已保存'))}</span>${job ? iconButton('cancel-full-summary', 'stop-circle', '停止全文翻译') : ''}<button class="icon-button full-toggle" data-action="toggle-full-controls" aria-expanded="${!panel.collapsed}" aria-controls="full-controls" title="${panel.collapsed ? '展开翻译设置' : '收起翻译设置'}" aria-label="${panel.collapsed ? '展开翻译设置' : '收起翻译设置'}">${icon('chevron-down')}</button></div><div id="full-controls" class="full-controls ${panel.collapsed ? 'is-collapsed' : ''}"><div class="full-controls-inner"><div class="panel-heading"><div class="panel-symbol">${icon('languages')}</div><h2>LLM 驱动，一键全文翻译</h2><p>保留章节结构、公式与表格，可读性 MAX</p></div><div class="full-options"><div class="field"><span>目标语言</span>${select('full-language', LANGUAGES, settings.targetLanguage, '全文目标语言')}</div><div class="field"><span>使用的 API</span>${select(
       'full-provider',
       settings.chatProviders.map((p) => [p.id, `${p.name} · ${p.model}`]),
@@ -343,7 +356,8 @@ export class Assistant {
           }<article id="full-result" class="markdown full-result reading-output"></article>${latest.error ? `<div class="error-card">${esc(latest.error)}</div>` : ''}`
         : ''
     }</div>`;
-    if (latest) mountMarkdown(this.root.querySelector('#full-result'), latest.content);
+    if (preserved) this.root.querySelector('#full-result').replaceWith(preserved);
+    if (latest) this.mountFull(latest);
     this.readingFonts.apply();
     if (latest) {
       this.root.querySelector('.result-toolbar').dataset.translationId = latest.id;
@@ -377,7 +391,7 @@ export class Assistant {
     let shown = latest;
     this.root.querySelector('[data-select="translation-history"]')?.addEventListener('valuechange', (e) => {
       shown = records.find((r) => r.id === e.detail);
-      mountMarkdown(this.root.querySelector('#full-result'), shown.content);
+      this.mountFull(shown);
       this.readingFonts.apply();
       this.root.querySelector('.result-toolbar').dataset.translationId = shown.id;
       this.updateExportProgress();
@@ -395,6 +409,23 @@ export class Assistant {
       ?.addEventListener('click', () =>
         this.exportTranslation(shown, true).catch((e) => toast(e.message, 'error')),
       );
+  }
+  mountFull(record) {
+    const host = this.root.querySelector('#full-result');
+    if (!host) return;
+    if (!this.fullRenderer || this.fullRenderer.host !== host || this.fullRenderer.recordId !== record.id) {
+      this.fullRenderer?.destroy();
+      host.replaceChildren();
+      this.fullRenderer = new FullMarkdown(
+        host,
+        (scope) => this.readingFonts.apply(scope),
+        (error) => toast(errorMessage(error), 'error'),
+      );
+      this.fullRenderer.recordId = record.id;
+    }
+    this.fullRenderer.set(record.content);
+    if (record.status !== 'streaming')
+      this.fullRenderer.finish().catch((error) => toast(errorMessage(error), 'error'));
   }
   async startFull() {
     const doc = this.app.active;
@@ -427,20 +458,19 @@ export class Assistant {
       stage: '读取 PDF',
       done: Promise.withResolvers(),
     };
+    job.writer = new TranslationWriter(record.id, (error) => {
+      job.writeError = error;
+      job.controller.abort();
+    });
     this.fullPanels.set(doc.id, { collapsed: false, autoCollapsed: false });
     this.jobs.set(key, job);
     await this.render();
     const update = () => {
       if (this.tab === 'full' && this.app.activeId === doc.id) {
         const status = this.root.querySelector('#full-stage');
-        if (status) status.textContent = job.stage;
+        if (status && status.textContent !== job.stage) status.textContent = job.stage;
         const summary = this.root.querySelector('[data-full-stage]');
-        if (summary) summary.textContent = job.stage;
-        const result = this.root.querySelector('#full-result');
-        if (result) {
-          mountMarkdown(result, record.content);
-          this.readingFonts.apply();
-        }
+        if (summary && summary.textContent !== job.stage) summary.textContent = job.stage;
       }
     };
     try {
@@ -465,17 +495,25 @@ export class Assistant {
           job.stage = stage;
           update();
         },
-        onDelta: async (_chunk, total) => {
+        onDelta: (_chunk, total) => {
           record.content = total;
-          await patch('translations', record.id, { content: total });
+          job.writer.update(total);
           const panel = this.fullPanels.get(doc.id);
-          if (total.trim() && !panel.autoCollapsed) {
+          if (!panel.autoCollapsed && total.trim()) {
             panel.autoCollapsed = true;
             this.setFullCollapsed(doc.id, true);
           }
           update();
+          if (
+            this.tab === 'full' &&
+            this.app.activeId === doc.id &&
+            this.fullRenderer?.recordId === record.id
+          )
+            this.fullRenderer.set(total);
         },
       });
+      await job.writer.flush();
+      if (this.fullRenderer?.recordId === record.id) await this.fullRenderer.flush();
       if (result.pdf) {
         const translated = await this.app.importGenerated(result.pdf, doc, record.id);
         record.generatedDocumentId = translated.id;
@@ -492,14 +530,16 @@ export class Assistant {
         await this.exportTranslation(record, false, saveTarget);
       }
     } catch (error) {
-      record.status = job.controller.signal.aborted ? 'stopped' : 'error';
-      record.error = errorMessage(error);
+      record.status = job.controller.signal.aborted && !job.writeError ? 'stopped' : 'error';
+      record.error = errorMessage(job.writeError || error);
+      await job.writer.flush().catch(() => {});
       await patch('translations', record.id, {
         content: record.content,
         status: record.status,
         error: record.error,
       });
     } finally {
+      job.writer.close();
       this.jobs.delete(key);
       job.done.resolve();
       if (this.app.activeId === doc.id && this.tab === 'full') await this.render();

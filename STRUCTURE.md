@@ -1,6 +1,6 @@
 # 项目结构与开发逻辑
 
-适用版本：0.3.4。入口为 `index.html` → `src/js/main.js`，浏览器标题为“纸间 · 文献翻译”。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
+适用版本：0.3.5。入口为 `index.html` → `src/js/main.js`，浏览器标题为“纸间 · 文献翻译”。这是静态前端工程，**没有 `main.py`，也没有 Python 运行时或后端函数**；与原需求中 main.py 对应的应用协调职责由 `App` 类承担。
 
 ## 文件树
 
@@ -48,10 +48,16 @@ pdf_translater/
 │  │  ├─ basic-translation.js      非 LLM 服务配置、签名、JSONP、分段和响应解析
 │  │  ├─ llm.js                    Chat/Responses、文件输入、SSE、原生 PDF
 │  │  ├─ markdown.js               Markdown/KaTeX/高亮/安全 HTML
+│  │  ├─ markdown-core.js          窗口/Worker 共用同参数 Markdown、公式和代码解析器
+│  │  ├─ markdown-blocks.js        完整 token 解析、稳定块及长段内联片段缓存
+│  │  ├─ markdown.worker.js        全文渲染 Worker，仅接收快照/返回块 HTML
+│  │  ├─ full-markdown.js          最新快照调度、净化与增量 DOM、工作预算及回退
+│  │  ├─ translation-writes.js     全文合并保存、最终/备份刷新与任务错误传播
 │  │  ├─ pdf-engine.js             各平台统一按需加载官方兼容 PDF.js 与匹配 Worker
 │  │  ├─ pdf.js                    PDF.js 加载、文本提取、可见页和批注交互
 │  │  ├─ pdf-text.js               同源字体、准确尺寸/旋转与字宽/基线对齐
 │  │  ├─ pdf-search.js             文本索引、字符位置映射与大小写/全字匹配
+│  │  ├─ pdf-internal-links.js     原生内链几何、命名/显式目标、短按与键盘跳转
 │  │  ├─ selection-actions.js      可注册的选区动作、命中状态及局部清除规则
 │  │  ├─ shapes.js                 形状选择清单、共享 PDF 点坐标几何及画布路径
 │  │  ├─ pdf-export.js             标准批注及文字/绘图导出、视觉版译文 PDF
@@ -90,7 +96,7 @@ pdf_translater/
 │  ├─ download-assets.ps1          下载开源图标、插画、字体与文档
 │  ├─ prepare-assets.mjs           拷贝 PDF.js 资源和分发许可证
 │  ├─ check.mjs                    递归进行 JavaScript 语法检查
-│  └─ verify-dist.mjs              Chromium/WebKit 生产子路径、无 CDN、中文导出检查
+│  └─ verify-dist.mjs              Chromium/WebKit 生产子路径、PDF/Markdown Worker、中文导出
 ├─ tests/
 │  ├─ 1-s2.0-S0950705126003436-main.pdf 用户提供的密集文字性能样本，不参与发布
 │  ├─ core.test.mjs                数据、清洗、SSE 和存档协议测试
@@ -99,6 +105,8 @@ pdf_translater/
 │  ├─ basic-translation.test.mjs   三家签名、响应、分段/取消、凭据存档和并发保存
 │  ├─ settings-persistence.test.mjs 自动保存交错写入、完整设置备份、清空 API 防复活
 │  ├─ reading-fonts.test.mjs       独立字号边界、并发保存、重载和无密钥存档恢复
+│  ├─ stream-rendering.test.mjs    Markdown 语义、未闭合语法、合并保存/失败及最终刷新
+│  ├─ pdf-internal-links.test.mjs  命名/显式目标、坐标和 QuadPoints 边界
 │  ├─ annotation-writes.test.mjs   原位写入顺序、事务回滚、删除保护和几何备份
 │  ├─ pdf-comments.test.mjs        PDF 标准注释/弹窗引用、Unicode 和换行规则
 │  ├─ pdf-fonts.test.mjs           新旧字体子集、连续编辑、字体名与映射保留
@@ -129,7 +137,8 @@ pdf_translater/
 │     ├─ inline-annotations.spec.js 原位输入/宽度/工具、空对象、原生导出及紧凑控件
 │     ├─ v031.spec.js              打开菜单/链接/文档树、浮栏同步、原字体重复导出
 │     ├─ v033.spec.js              引擎分组/页签位置、启动辅助按钮/默认及固定缩放
-│     └─ v034.spec.js              无后缀/重定向、菜单宽度、字号独立/边界/持久化/流式
+│     ├─ v034.spec.js              无后缀/重定向、菜单宽度、字号独立/边界/持久化/流式
+│     └─ v035.spec.js              长译文性能/完整保存/Worker 回退、内链跨浏览器与编辑
 ├─ dist/                           构建产物，不手工编辑
 ├─ node_modules/                   npm 依赖，不手工编辑
 ├─ .cache/                         npm 缓存、开发期官方文档，不进入发布
@@ -266,7 +275,7 @@ settings/app 新增 `readingFontSizes: {source,selection,full}`，值为各区�
 - `headers(provider)`：按服务组装 JSON 与 Key 头，兼容 MiMo `api-key`。
 - `sseEvents(body)`：流式 UTF-8 解码；支持分块 CRLF、多行 data、尾包，释放 reader 锁。
 - `extractText(json)`：Chat 与 Responses 非流式文本统一提取。
-- `requestLlm(options)`：构造协议请求，可附整份 PDF；处理 Markdown 增量、完成标记、错误、截断与原生 PDF 容器文件。`onDelta` 是异步回调，必须 await 持久化。
+- `requestLlm(options)`：构造协议请求，可附整份 PDF；处理增量、完成标记、错误和原生 PDF 容器文件。保留 await onDelta；全文回调仅更新内存并交给合并保存/显示调度，问答仍按原流程 await 落盘。
 - Chat 兼容文件回退：只在 400 且错误匹配 `file must have a file_id or file_data` 时，从 `file: {filename,file_data}` 改为文件部分的顶层字段后重试一次。文件数据、完整历史、服务地址和凭据保持一致；不扩大到其他错误或自动截断/降级。
 - `testProvider(provider,signal)`：短文本响应测试，不设置可能破坏结构的输出截断。
 - `listModels(provider)`：读取 `/models`，超时后报告错误。
@@ -303,6 +312,20 @@ settings/app 新增 `readingFontSizes: {source,selection,full}`，值为各区�
 
 - `renderMarkdown(text)`：Markdown + KaTeX + 代码高亮后 DOMPurify 清理，允许所需的安全字体、颜色、表格样式。
 - `mountMarkdown(element,text)`：将安全内容放入容器，链接隔离打开；远程图片改占位，避免隐式请求。
+- `sanitizeMarkdown(html)` / `prepareMarkdown(element)`：共用现有 DOMPurify 白名单及链接隔离，全文 Worker 返回的 HTML 仍先净化再入 DOM。markdown-core 同时供原 mountMarkdown 与全文 Worker 使用，不改变问答、划词和导出的解析参数。
+
+### 全文渲染与写入
+
+- `MarkdownBlocks.render(source)`：完整 Markdown parse→顶层平衡 token 分组；复用相同 token 组的渲染 HTML，纯内联长段按平衡边界拆分，保留 Unicode、公式、嵌套和跨块 HTML 上下文。只保留上一快照缓存。
+- `FullMarkdown.set/schedule/send/receive`：保存最新内容版本、约 80ms 合并，一项在途；Worker 返回块 HTML 后按差异净化/更新 DOM，约 7ms 分片让出主线程。新块脱离页面构建后一次挂载；flush 等待最新版本，finish 渲染结束后释放 Worker/cache 并保留 DOM，destroy 清理定时器/Worker。Worker 失败用同解析器本地回退，渲染错误不无限排队。
+- `TranslationWriter.update/write/flush/close`：约 200ms 合并完整内容，串行在途保存及最新版本；flush 等待所有当前版本落盘，失败向任务上报。flushTranslationWrites 用于备份；隐藏/退出页面触发尽力刷新。
+- `Assistant.mountFull(record)`：按 recordId 管理全文渲染器；相同结果在任务结束时保留 DOM，历史/文档切换重置。onStage 仅更新状态文案，onDelta 更新内存、写入队列及当前渲染器，不重复全文 innerHTML。
+
+### PDF 内部链接
+
+- `linkRects(annotation,viewport)`：Rect/QuadPoints 转换到已缩放/旋转的视口矩形并裁切边界。
+- `resolvePdfDestination(pdf,dest)`：命名目标或显式数组→页引用/从零开始页码→XYZ/FitH/FitV/FitR 归一化目标坐标，保持阅读缩放比例。
+- `mountInternalLinks(viewer,shell,annotations,viewport,generation)`：仅 Link.dest，透明链接层不截获取词；页面短按几何命中，拖动/长按/标注和绘图不触发；键盘链接、悬停反馈，异步跳转核对文档/渲染代数。clearInternalLinks 清理虚拟页面重建监听。
 - `loadFont()`（内部）：导出页面文本框或修复旧损坏子集时按需加载同一原始 Noto 字体；仅含标准批注且源文件字体正常时不加载。
 - `exportAnnotatedPdf(blob,annotations,sourcePdf)`：读取原 PDF 并注册 notoFontkit；批注交给 appendPdfNote，文字标记及笔迹交给 appendPdfMark；形状沿用矢量绘制，文本框按记录的 fontSize/手动宽度/边框绘制。flush 后修复旧 Noto 子集，保持源 Blob 不变。
 - `markdownToPdf(text,onProgress)`：离屏渲染译文，逐块/逐页生成 PDF；过高块分片，逐页释放画布。输出为栅格视觉 PDF。
@@ -379,7 +402,7 @@ settings/app 新增 `readingFontSizes: {source,selection,full}`，值为各区�
 
 ### archive.js
 
-- `createArchive({includeSecrets,password})`：先等待 flushSettings 与 flushAnnotations，再创建一致快照、二进制 PDF、SHA-256 清单、异步 ZIP；格式版本 2 包含九表及目录/删除记录，可剥除凭据和加密。includeSecrets=false 时也清空全部基础翻译 keyId/secret/连接状态；现有云同步同样不携带它们。
+- `createArchive({includeSecrets,password})`：先等待 flushSettings、flushAnnotations 和 flushTranslationWrites，再创建一致快照、二进制 PDF、SHA-256 清单、异步 ZIP；格式版本 2 保持不变。includeSecrets=false 清除密钥，字号及完整译文保留。
 - `keyFor`、`encrypt`、`decrypt`（内部）：PBKDF2-SHA256 250000 次，AES-256-GCM；magic `PBRIDGE1` + 16 字节 salt + 12 字节 IV + 密文。
 - `readArchive(blob,password)`：接受格式 1/2，旧版新表补空；验证层级、删除记录所有者、逻辑组根锚点、跨表引用、文件哈希和 PDF 头，全部通过才允许合并。
 - 0.1.2 批注校验新增 strike、shape，校验形状枚举、起止点和可选字号/笔宽；兼容旧记录缺省字段。存档和数据库版本不变，新增记录应使用 0.1.2 或更新版本恢复。
@@ -566,6 +589,8 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 | #selection-result | 在线词典或句子结果，不持久化 | Assistant.renderSelection |
 | .dictionary-credit | 主要词典、中文词义与详细解释翻译来源、备选署名/词条/许可证；dictionaryLink 仅允许无凭据 HTTPS | Assistant.renderSelection / dictionaryLink |
 | #full-stage / #full-result | 全文状态和完整 Markdown 结果 | Assistant.startFull |
+| .full-markdown-block / 内部 span 片段 | 稳定的 Markdown 块/长段内联片段、屏幕外绘制优化 | FullMarkdown / MarkdownBlocks |
+| .pdf-internal-links / .pdf-internal-link | PDF 内部引用的可访问键盘链接、悬停和坐标命中；指针交给原文字层 | mountInternalLinks |
 | #full-controls / .full-summary / .full-toggle | 参数折叠动画、吸顶进度栏、停止与展开/收起按钮 | Assistant.setFullCollapsed |
 | [data-select=translation-history] | 当前 PDF 的旧译文选择 | Assistant.renderFull |
 | [data-select=chat-thread] / #chat-messages | 当前根文档的会话与全部消息 | Assistant.renderChat |
@@ -610,7 +635,7 @@ flowchart LR
   D --> E[选择文本]
   E --> F[词典 / 在线翻译 / LLM]
   C --> G[全文翻译与 AI 问答]
-  G --> H[每段流式先保存]
+  G --> H[全文合并保存；问答逐段保存]
   H --> I[Markdown + KaTeX]
   I --> J[译文 PDF]
   J --> C

@@ -5,6 +5,7 @@ import { uid } from './utils.js';
 import { planSelectionAction, selectionActionState } from './selection-actions.js';
 import { drawShape, shapeGeometry, hitShape, translateAnnotation, hitEraserSweep } from './shapes.js';
 import { renderAlignedText } from './pdf-text.js';
+import { mountInternalLinks } from './pdf-internal-links.js';
 import { indexPageText, findPageMatches } from './pdf-search.js';
 import { TextAnnotations } from './text-annotations.js';
 import { writeAnnotations } from './annotation-writes.js';
@@ -347,6 +348,12 @@ export class PdfViewer {
     });
     if (!layer || generation !== this.generation || !canvas.isConnected) return;
     this.textLayers.set(number, layer);
+    const links = await page.getAnnotations({ intent: 'display' }).catch((error) => {
+      if (generation === this.generation) this.callbacks.error(error);
+      return [];
+    });
+    if (generation !== this.generation || !canvas.isConnected) return;
+    mountInternalLinks(this, shell, links, viewport, generation);
     this.drawSearchMatches(number);
     this.drawAnnotations(number);
     this.bindInk(ink, number);

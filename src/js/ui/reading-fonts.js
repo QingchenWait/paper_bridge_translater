@@ -31,17 +31,19 @@ export class ReadingFonts {
     this.sizes = normalizeReadingFontSizes(settings.readingFontSizes);
     this.apply();
   }
-  apply() {
+  apply(scope) {
     for (const [area, selector] of Object.entries(targets)) {
       const target = this.root.querySelector(selector);
+      if (scope && !target?.contains(scope)) continue;
       target?.style.setProperty('--reading-font-scale', this.sizes[area] / 100);
       // Scale absolute inline HTML font sizes too, preserving their relative hierarchy.
       // em/% inherit the resized parent already; KaTeX uses relative internal sizes.
-      target?.querySelectorAll('[style]').forEach((element) => {
+      (scope || target)?.querySelectorAll('[style]').forEach((element) => {
         const size = element.style.fontSize;
         if (/^-?[\d.]+(?:px|pt|pc|in|cm|mm|q|rem)$/i.test(size))
           element.style.fontSize = `calc(${size} * var(--reading-font-scale))`;
       });
+      if (scope) break;
     }
     this.root.querySelectorAll('[data-font-area]').forEach((button) => {
       const size = this.sizes[button.dataset.fontArea];

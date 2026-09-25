@@ -1,5 +1,19 @@
 # 开发记录
 
+## v0.3.5 · 全文流式渲染性能与 PDF 内部链接 · 2026-09-25
+
+范围限定全文翻译的接收/保存/显示管线与 PDF 原生内部链接。现有 LLM 请求协议、问答/划词保存、PDF 文字层/编辑、数据库和存档格式保留，未新增 npm 运行依赖。
+
+- 根因：startFull 每个 SSE 增量 await 全文 IndexedDB patch，onStage 与 onDelta 又各执行一次全文 Markdown→KaTeX→innerHTML 重建及字号遍历；长度增长后重复处理量随增量数量累积。相同本机 55,032 字符/80 字符增量的预排队响应，旧版数据全部到达后约 84.9s 才完成显示，修订后约 0.44s，最终保存长度一致；这是合成基准，不是所有设备与内容的绝对速度保证。
+- markdown-core 提取现有同参数解析器供主线程/markdown.worker 共用；MarkdownBlocks 完整解析以保留引用式链接、嵌套列表和跨增量语法，按顶层 token 组缓存渲染；长段落仅在平衡的内联 token 边界拆成片段，长文本按 Unicode 字符拆分，不切断公式/标记。跨块 HTML 保留整体上下文。
+- FullMarkdown 约 80ms 合并快照，只保留一项在途和最新输入；DOMPurify 仍在主线程净化，复用未变化块/片段，仅更新变化部分并按约 7ms 工作预算让出事件循环。新块先脱离页面构建再一次挂载，避免巨段分批插入导致重复布局；保留完整 p 的长段内部片段，不改变段落语义及标题层级间距。content-visibility 为渐进增强，Worker 不可用时回退相同解析器；离开全文页或最终渲染完成后释放 Worker，完成时复用原结果节点。reading-fonts 允许仅处理新增子树。
+- TranslationWriter 约 200ms 合并最新全文写入，不在 onDelta 阻塞 SSE 消费，串行完成后继续最新快照；完成/停止/异常前 flush，archive.createArchive 增加 flushTranslationWrites，pagehide/visibilitychange 主动刷新。写入失败中止本任务并显式报告，未收到的内容不编造，强制终止进程不能保证未落盘尾部。
+- pdf-internal-links 使用 getAnnotations 的 Link.dest、命名目标 getDestination、getPageIndex 和当前 PageViewport.convertToViewportPoint（6.x 无旧矩形转换 API），支持 XYZ/Fit/FitH/FitV/FitR 位置。链接层不拦截文字层指针，短按命中触发原 goToLocation，拖选/长按/编辑优先；保留键盘入口、悬停标识和渲染代数检查。虚拟页面重绘时清理旧监听，防止重复导航；不执行外部 URL、脚本或远程 PDF 动作。
+
+验证：87 项单元测试、完整 117 项浏览器回归通过；最终离屏构建优化后复测 9 项全文/内链/字号/导出用例全部通过。覆盖长流持续显示与标题节点稳定、250 节/2500 公式、存档最终刷新、停止后完整部分输出、Worker 禁用回退、命名/显式内链、旋转/缩放/精准坐标、文字拖选及覆盖编辑。内链在 Chromium、Firefox、WebKit 26.6 及独立旧 WebKit 18.4 触控场景验证；Chrome 142、Chromium、WebKit 18.4 生产子路径检查包含本地 Markdown Worker 和 200 个公式。
+
+性能复测：55,032 字符合成响应全部到达后的延迟 84,857ms→444ms，主线程 >50ms 长任务累计 61,150ms→65ms，输出/保存字符数一致。扩大到 275,032 字符、2500 公式的单段，最终初始显示约 1.92s；快速滚动 40 帧平均约 37ms、最大约 59ms，最密集段仍有浏览器公式布局成本，不能声称所有内容/设备均零延迟或恒定帧率。使用模拟 LLM、合成 PDF、临时浏览器资料，没有发送用户文档或 Key，本地 5173 服务已启动用于复现。最终静态产物为 284 文件、约 17.3 MiB，额外约 0.8 MiB 为仅全文显示时启动的解析 Worker，完成后释放。
+
 ## v0.3.4 同版本修订 · 对象字号偏好与查找高亮可见性 · 2026-09-24
 
 - TextAnnotations.action 的浮栏字号赋值通过 rememberFontSize 统一限制为 6–48 pt，并回调 App.setAnnotationFontSize；分别更新既有 toolOptions.noteSize/textSize、viewer 默认值和当前同类滑块，复用 saveToolOptions 持久保存，保留其他字号、颜色和笔宽偏好。输入和尺寸模式均生效，后续新建同类对象沿用默认值。
