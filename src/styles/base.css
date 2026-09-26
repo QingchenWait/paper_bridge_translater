@@ -406,13 +406,55 @@ img {
   align-items: center;
   min-height: 3.5rem;
 }
+.document-tab-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
 .document-tabs {
   display: flex;
   gap: 0.6rem;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
   flex: 1;
   min-width: 0;
   scrollbar-width: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.document-tabs::-webkit-scrollbar {
+  display: none;
+}
+.document-tabs.dragging,
+.document-tabs.dragging button {
+  cursor: grabbing;
+}
+.tab-scroll.icon-button {
+  width: 1.35rem;
+  min-width: 1.35rem;
+  padding: 0;
+  flex: none;
+  border-radius: var(--radius-sm);
+  background: #eeebff;
+}
+.tab-scroll .icon {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+.tab-scroll-left .icon {
+  transform: rotate(-90deg);
+}
+.tab-scroll-right .icon {
+  transform: rotate(90deg);
+}
+.tab-scroll:disabled {
+  background: #eceff6;
+  filter: grayscale(1);
+}
+.tab-scroll:hover:not(:disabled) {
+  background: #e2dcfb;
 }
 .document-tab {
   display: flex;
@@ -2409,11 +2451,24 @@ img {
   overflow: auto;
   min-height: 0;
 }
+.settings-modal .modal-body {
+  display: flex;
+  overflow: hidden;
+}
 .settings-layout {
   display: grid;
   grid-template-columns: 10rem minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 2rem;
-  min-height: 32rem;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+#settings-content {
+  min-height: 0;
+  overflow: auto;
+  padding: 0.2rem 0.5rem 0.3rem 0.2rem;
+  overscroll-behavior: contain;
 }
 .settings-nav {
   display: flex;

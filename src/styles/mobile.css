@@ -258,6 +258,11 @@
     padding: 0 0.2rem 0 0.5rem;
     min-height: 3.15rem;
   }
+  .tab-scroll.icon-button {
+    width: 1.6rem;
+    min-width: 1.6rem;
+    height: 3.15rem;
+  }
   .pdf-miniature {
     width: 1.8rem;
     height: 2.3rem;
@@ -561,6 +566,7 @@
   }
   .settings-layout {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     gap: 1.2rem;
     min-height: 0;
   }
@@ -578,13 +584,15 @@
     min-height: 2.5rem;
     flex: 1;
     gap: 0.35rem;
+    flex-direction: column;
+    min-width: 0;
   }
   .settings-nav > .button .icon {
     width: 1rem;
     height: 1rem;
   }
   .settings-nav > .button span {
-    white-space: nowrap;
+    white-space: normal;
   }
   .section-heading h3 {
     font-size: 1rem;

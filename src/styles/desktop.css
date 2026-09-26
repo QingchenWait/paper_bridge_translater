@@ -1,5 +1,11 @@
 /* Desktop landscape layout and controls. Mobile overrides live in mobile.css. */
 @media (min-width: 961px) {
+  .tab-scroll.icon-button {
+    height: 2.45rem;
+  }
+  .settings-modal {
+    height: min(46rem, 90dvh);
+  }
   #provider-form .field input:not([type='checkbox']) {
     padding: 0.55rem 0.8rem;
   }

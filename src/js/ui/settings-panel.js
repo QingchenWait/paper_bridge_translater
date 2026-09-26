@@ -95,6 +95,7 @@ export async function openSettings(app, tab = 'api') {
       },
     },
   );
+  dialog.element.classList.add('settings-modal');
   const content = dialog.element.querySelector('#settings-content');
   const run = (fn) => async (event) => {
     const el = event?.currentTarget;
@@ -358,6 +359,7 @@ export async function openSettings(app, tab = 'api') {
         autoSaveApi();
         tab = btn.dataset.action.replace('settings-', '');
         render();
+        content.scrollTop = 0;
       }),
   );
   render();

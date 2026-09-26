@@ -13,6 +13,7 @@ import { SHAPES } from './shapes.js';
 import { PdfNavigation } from './ui/pdf-navigation.js';
 import { LibraryView } from './ui/library.js';
 import { OpenPdfMenu } from './ui/open-pdf.js';
+import { DocumentTabs } from './ui/document-tabs.js';
 import { esc, sizeLabel, dateLabel, chooseSaveTarget, saveFile, errorMessage, md5Blob } from './utils.js';
 import {
   icon,
@@ -66,6 +67,7 @@ class App {
     installPdfRuntime();
     installAppleWebKit();
     this.mount();
+    this.documentTabs = new DocumentTabs(document.getElementById('document-tabs'));
     this.library = new LibraryView(this, document.getElementById('library-view'));
     this.openPdfMenu = new OpenPdfMenu(this);
     window.addEventListener('storage-blocked', () =>
@@ -448,15 +450,20 @@ class App {
   }
   renderTabs() {
     const root = document.getElementById('document-tabs');
-    root.innerHTML = this.openIds
-      .map((id) => {
-        const doc = this.documents.find((d) => d.id === id) || this.active;
-        if (!doc) return '';
-        return `<div class="document-tab ${id === this.activeId ? 'active' : ''}"><button class="tab-main" data-action="open-document" data-id="${id}" title="${esc(doc.name)}">${icon('file-text')}<span class="tab-caption"><strong>${esc(doc.name)}</strong></span></button><button class="tab-close" data-action="close-document" data-id="${id}" title="关闭标签，保留文档" aria-label="关闭 ${esc(doc.name)}">${icon('x')}</button></div>`;
-      })
-      .join('');
-    if (!this.openIds.length)
-      root.innerHTML = `<div class="workspace-label">${icon('book-open')}我的阅读空间</div>`;
+    const scrollLeft = root.scrollLeft;
+    const markup =
+      this.openIds
+        .map((id) => {
+          const doc = this.documents.find((d) => d.id === id) || this.active;
+          if (!doc) return '';
+          return `<div class="document-tab ${id === this.activeId ? 'active' : ''}"><button class="tab-main" data-action="open-document" data-id="${id}" title="${esc(doc.name)}">${icon('file-text')}<span class="tab-caption"><strong>${esc(doc.name)}</strong></span></button><button class="tab-close" data-action="close-document" data-id="${id}" title="关闭标签，保留文档" aria-label="关闭 ${esc(doc.name)}">${icon('x')}</button></div>`;
+        })
+        .join('') || `<div class="workspace-label">${icon('book-open')}我的阅读空间</div>`;
+    // Page autosaves also call renderTabs; identical markup must not interrupt a drag or scroll.
+    if (markup === this.tabsMarkup) return;
+    this.tabsMarkup = markup;
+    root.innerHTML = markup;
+    this.documentTabs.refresh(this.activeId, scrollLeft);
   }
   renderToolbar() {
     const root = document.getElementById('pdf-toolbar');

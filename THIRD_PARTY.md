@@ -33,7 +33,7 @@ Firefox base 源调研（2026-09-25/26）：Mozilla GCS、Firefox 附件 CDN 和
 | [core-js 3.50.0](https://github.com/zloirock/core-js/tree/v3.50.0) | PDF.js legacy 自带的 ECMAScript 兼容实现，无独立新增 npm 依赖 | MIT；原始许可证见 public/licenses/CORE-JS.txt |
 | [pdf-lib](https://pdf-lib.js.org/) | 修改和生成 PDF | MIT |
 | [@pdf-lib/fontkit](https://github.com/Hopding/fontkit/blob/master/src/subset/CFFSubset.js) | Noto 字体子集；pdf-fonts.js 对已安装 1.1.1 的 CFF 编码作局部兼容适配 | MIT；Devon Govett / Andrew Dillon，见 public/licenses/FONTKIT.txt |
-| [Lucide](https://github.com/lucide-icons/lucide) | `src/_logo/icons` 中 66 个 SVG，使用主分支或 0.468.0 下载版本；0.2.0 新增文件夹/移动/视图/排序七个图标，保留原文件内容 | ISC；见 `src/_logo/LUCIDE-LICENSE` |
+| [Lucide](https://github.com/lucide-icons/lucide) | `src/_logo/icons` 中 67 个 SVG，使用主分支或 0.468.0 下载版本；v0.4.0 新增 [triangle.svg](https://raw.githubusercontent.com/lucide-icons/lucide/0.468.0/icons/triangle.svg) 用于卡片滚动，保留原文件内容 | ISC；见 `src/_logo/LUCIDE-LICENSE` |
 | [Lobe Icons](https://github.com/lobehub/lobe-icons/tree/2e76c48721e91b9aaa40803a0fa2eb8aca7399c4/packages/static-svg/icons) | `src/_logo/llms` 七家厂商 LOGO，源文件分别为 deepseek-color、xiaomimimo、qwen-color、openai、zhipu-color、kimi-color、lmstudio，2026-09-23 直接下载，未重绘 | MIT；见 `src/_logo/LOBE-ICONS-LICENSE`；产品标识归对应品牌所有 |
 | [Fluent Emoji](https://github.com/microsoft/fluentui-emoji) | `src/_logo/art/open-book.png` 与 `sparkles.png`，3D 插画 | MIT；见 `src/_logo/FLUENT-LICENSE` |
 | [Noto CJK](https://github.com/notofonts/noto-cjk) | `public/fonts/NotoSansSC-Regular.otf`，按需加载的批注中文字体 | SIL OFL 1.1；见 `public/fonts/LICENSE` |

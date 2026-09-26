@@ -32,7 +32,7 @@ pdf_translater/
 │  │  ├─ llms/{deepseek,mimo,qwen,openai,glm,kimi,lmstudio}.svg
 │  │  ├─ llms/{meta,google,baidu,aliyun,volcengine}.svg
 │  │  ├─ llms/local.svg             Fluent Emoji 彩色本地电脑图标
-│  │  ├─ icons/*.svg               66 个已下载 Lucide 图标，清单见下
+│  │  ├─ icons/*.svg               67 个已下载 Lucide 图标，清单见下
 │  │  └─ art/{open-book,sparkles}.png
 │  ├─ js/
 │  │  ├─ main.js                   应用协调、标签、工具栏、文档管理
@@ -81,6 +81,7 @@ pdf_translater/
 │  │  │  └─ pdf.worker.js          各平台官方 legacy PDF.js 与通用运行时的 Worker 入口
 │  │  └─ ui/
 │  │     ├─ components.js          图标、按钮、下拉、弹窗、提示、输入框
+│  │     ├─ document-tabs.js       文件卡片溢出、左右按钮/拖动、激活文件定位
 │  │     ├─ assistant.js           划词、全文、AI 会话与任务状态
 │  │     ├─ translation-engine.js  引擎枚举、分组菜单、品牌触发器及共享保存
 │  │     ├─ reading-fonts.js        三组阅读字号按钮、范围状态和显示比例应用
@@ -159,6 +160,7 @@ pdf_translater/
 │     ├─ offline-lifecycle.spec.js 选中加载/切走释放、慢网 UI、保存恢复与旧请求隔离
 │     ├─ dictionary-fallbacks.spec.js 有道宿主、详细释义补齐、中文转换/回退/取消及来源
 │     ├─ settings-autosave.spec.js 自动保存、即时备份、动画速度、桌面/手机启动页
+│     ├─ layout-overflow.spec.js   卡片滚动/边界/触摸/缩放与固定设置导航，支持三内核
 │     ├─ inline-annotations.spec.js 原位输入/宽度/工具、空对象、原生导出及紧凑控件
 │     ├─ v031.spec.js              打开菜单/链接/文档树、浮栏同步、原字体重复导出
 │     ├─ v033.spec.js              引擎分组/页签位置、启动辅助按钮/默认及固定缩放
@@ -179,6 +181,8 @@ pdf_translater/
 0.2.0 追加：`folder-plus.svg`、`folder-input.svg`、`layout-grid.svg`、`list.svg`、`arrow-up.svg`、`arrow-down.svg`、`folder-tree.svg`（Lucide 0.468.0）。
 
 0.2.1 追加 `eye-off.svg`（Lucide 0.468.0）和七个厂商 LOGO（Lobe Icons 固定提交，下载出处见 THIRD_PARTY.md）。
+
+0.4.0 卡片栏追加 `triangle.svg`（Lucide 0.468.0 原版），用 CSS 旋转为左右方向，复用现有 ISC 许可证。
 
 0.3.0 原位批注修订追加 move、rotate-ccw、a-arrow-up、a-arrow-down 四个 Lucide 0.468.0 图标，下载脚本已同步；0.3.1 复用既有下载图标。
 
@@ -551,6 +555,7 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 
 ### ui/settings-panel.js
 
+- 设置专用 `.settings-modal` 的 body 不滚动，`.settings-layout` 的五项导航与 `#settings-content` 分离，后者单独滚动。desktop.css 限制桌面弹窗高度，mobile.css 使用导航/内容两行布局；导航切页后重置内容 scrollTop，不影响自动保存、启动引导或其他弹窗。
 - `bindProviderActions(form,readProvider,onModelSelected)`：设置/启动配置共用；读取当前地址和 Key、官网映射、模型列表请求/选择，设置页选择后自动保存；请求返回时表单已移除或凭据已改变则不填入过期列表。
 - `providerMenu()`：复用 custom-select 的自绘服务商菜单、逐行厂商 LOGO，选择后 capture 现有草稿再追加新配置。
 - `openSettings(app,tab)`：API、基础翻译、备份、WebDAV、帮助五视图；新增、填写、选择协议/能力/默认、移除均自动持久化；眼睛按钮仅切换输入类型，获取按钮监听当前 URL 输入并在点击时重读；测试不覆盖设置。
@@ -559,6 +564,12 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 - `onboarding(app)`：hideOnboarding 为 false 时显示欢迎→服务商→配置流程，主标题为“纸间 · 文献翻译 & AI 分析”，作者链接通过 openExternalWebsite 打开；“直接进入 APP”与配置按钮居中，偏好开关右下角，新增右上角关闭按钮。关闭本次引导不等于不再显示，只有显式开关控制后续弹出。
 - 启动配置复用 bindProviderActions，不添加明文切换；保存时同时更新默认问答与 translationEngine/translationProviderId，保留已有配置列表及其他设置。
 - `#onboarding-form [data-action=get-api-key]` 映射官网获取，`[data-action=list-models]` 映射模型列表请求，`.model-list [data-model]` 映射填入当前模型名称；与 #provider-form 共用辅助动作但仅设置页提供眼睛按钮。
+
+### ui/document-tabs.js
+
+- `DocumentTabs(root)`：一次包装既有 `#document-tabs`，插入左右三角按钮并绑定鼠标、原生滚动、键盘和 ResizeObserver；触摸使用浏览器原生滑动，不拦截触摸事件。
+- `refresh(activeId?, scrollLeft?)`：App.renderTabs 跳过相同卡片内容，实际重绘前读取位置、重绘后调用；合并至下一帧，按不含按钮的可用宽度判断溢出，避免显示/隐藏按钮来回抖动。激活文件改变时令卡片完整可见，普通重绘和手动滚动保留位置；隐藏阅读区在再次可见时重新测量。
+- `scroll(direction)` / `updateEdges()`：每次按钮滚动约视口 80%，尊重减少动态效果偏好；原生滚动事件同步首尾 disabled。鼠标拖动以指针捕获覆盖越界，松开/取消/失去捕获释放，拖动后的点击不触发文件切换或关闭。
 
 ### ui/translation-engine.js / providers.js 品牌映射
 
@@ -656,6 +667,7 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 | #workspace / .reader-panel / .assistant-panel | 左 PDF 右翻译的工作区 | desktop/mobile |
 | #split-handle | 拖动或方向键调整左右宽度 | desktop.js |
 | #document-tabs / .document-tab | 已打开 PDF 的单行卡片、关闭和激活；页码保留在工具栏 | App.renderTabs |
+| .document-tab-strip / [data-action=tabs-left] / [data-action=tabs-right] | 溢出滚动视口、左右三角按钮与边界禁用；桌面打开 PDF 在视口外 | DocumentTabs |
 | #pdf-input | 隐藏本地多文件选择器 | App.importFiles |
 | [data-action=duplicate-yes] / [data-action=duplicate-no] | 重复 MD5 确认；是创建独立副本，否/关闭取消当前文件 | App.confirmDuplicate |
 | [data-action=open-pdf] / .open-pdf-menu / [data-open-pdf] | 阅读栏和手机顶部打开菜单：本地、文档库、链接 | OpenPdfMenu |
@@ -702,6 +714,7 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 | .annotation-tools / [data-text-action] | 对象内部定位同步浮栏；尺寸模式四/五按钮，文字模式仅字号增减/删除 | TextAnnotations.showToolbar/action/positionToolbar |
 | .note-anchor / .is-emphasized | 批注同色源文下划线与悬停强调 | PdfViewer.drawAnnotations / TextAnnotations.emphasize |
 | #settings-content / #provider-form | 多 API 配置及能力设置 | settings-panel |
+| .settings-modal / .settings-nav | 内容独立上下滚动，桌面左侧/手机顶部五项导航始终可见 | openSettings / desktop.css / mobile.css |
 | [data-action=settings-basic] / [data-select=basic-default] | 基础翻译子页面与默认模型 | BasicSettings |
 | .youdao-dictionary-note | 内置有道词典的网页限制及客户端 CORS 代理说明 | BasicSettings.render |
 | .basic-summary / #basic-body-{id} / .basic-status | 单行折叠标题、展开配置及状态绿点 | BasicSettings.render/status |
