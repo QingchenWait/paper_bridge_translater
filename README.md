@@ -26,6 +26,8 @@ npm run preview
 
 所有浏览器统一使用同版本 PDF.js 官方兼容构建与配套 Worker，按实际缺失情况补齐所需 JavaScript 能力，避免 Chrome/Edge 等较旧内核因缺少 `getOrInsertComputed` 而出现 PDF 白屏。iPhone、iPad 和 macOS Safari 的文字选择、触控编辑和比例菜单规则仍在独立文件中；使用 iOS/iPadOS 浏览器时，长按 PDF 文字可选词，文本框工具在页面松手后创建输入框。
 
+首屏优先加载阅读和翻译控件，Markdown、KaTeX、代码高亮及全文渲染控制器在出现富文本结果或打开对应视图时再加载。启动引导不再等待上次 PDF 恢复或浏览器持久存储授权；PDF 引擎和文件并行准备。开发服务将 PDF.js 保持为打开文档时才转换的依赖，避免首次使用 Worker 触发整页重优化。Lite 仍只在当前选中本地引擎后后台加载，切走释放推理资源并保留模型缓存。
+
 ## 阅读与编辑
 
 环形进度提示统一为约 1.2 秒一圈；系统启用“减少动态效果”时使用约 1.8 秒一圈，避免原来的极短时长导致异常高速旋转。
@@ -164,6 +166,8 @@ v0.3.1 修复 Noto 字体子集编码，保留原始 NotoSansSC 字体和字形�
 - **Tauri 宿主**：需使用支持模块 Worker、WebAssembly、IndexedDB 的系统 WebView；静态协议需正确提供 JS/MJS/WASM MIME 类型。如果宿主启用 CSP，须允许本地 Worker、模块、WASM 编译与静态资源请求；无需 WebGPU、SharedArrayBuffer 或 COOP/COEP。Service Worker 不可用的自定义协议仍可读取随包资源。本项目未新增原生工程、未制作或真机验证 Tauri 安装包。
 - **兼容性**：CPU 单线程 Worker，在支持相应 WASM 能力的现代 Chrome/Edge、Firefox、Safari/WebView 上运行。Mozilla 预编译 Bergamot 包含 SIMD/原子指令，不能声称是无 SIMD 的最低版本 WASM；启动前会检测模块能力，不支持时明确报错。ONNX 使用支持标量回退的固定浏览器运行库。不承诺所有历史浏览器、低内存设备均能加载 Pro；不支持时可使用 Lite 或升级浏览器。
 
+v0.4.0 针对移动浏览器补齐了系统选区手柄的最终事件：长按拖动选中一段文字后，即使最终选区在 `pointerup/touchend` 之后才发布，也会重新读取并只翻译一次。macOS 旧版 Safari/WebKit 缺少的 `AbortSignal.any()`、`AbortSignal.timeout()` 与 `ArrayBuffer.transferToFixedLength()` 现在由兼容层在 PDF.js 和翻译模块加载前补齐；CMap、标准字体和 WASM 目录也会基于页面地址生成绝对同源 URL，避免 Worker 从 `/assets/` 错误解析资源。这样可避免 PDF 白屏及划词翻译报错；Chrome、Firefox、Android、iOS/iPadOS 和 macOS 的其他路径保持原逻辑。
+
 v0.4.0 已修复静态托管将 `/index.html` 重定向到 `/` 时，首次访问正常、刷新后页面打不开的问题。更新需重新构建并部署完整 `dist/`（含 `sw.js`）；浏览器收到新 Service Worker 后，关闭该站点所有旧标签再打开即可激活修复。无需清除站点数据或重新下载模型。按当前引擎加载、切走释放 Worker、慢网先使用 UI 的策略保持不变。
 
 本轮遵循“不增加部署包、不使用 CORS 受限站点”的约束：未找到满足条件的 Firefox `en→zh base` 浏览器下载源，因此 Plus 保留原 OPUS-MT INT8。曾考虑的 Plus 静态权重已移除，不需要重新安装已有 OPUS/NLLB 缓存。ModelScope 连接和 CORS 已在本开发网络实测，仍可能受具体运营商、浏览器策略或服务可用性影响。
@@ -297,7 +301,7 @@ npm run test:offline-dist
 
 端到端测试优先使用 Windows 已安装的 Chrome；其他平台可安装 Chromium，或设置 `PLAYWRIGHT_CHROMIUM_EXECUTABLE`。运行完整用例前执行 `npx playwright install chromium webkit firefox`，Apple 用例使用独立临时 WebKit 资料。测试使用合成 PDF 与用户指定的 `tests/1-s2.0-S0950705126003436-main.pdf` 性能样本，不读取其他个人文档、Key 或浏览器资料。缺少该样本时自动跳过对应性能用例；PDF 只在本地渲染，不上传到外部服务。外部 API 回归使用可控响应；FreeDictionaryAPI/3325 已实测浏览器跨域获取公开词条，有道已实测原生式请求可返回、网页 Origin 被拒绝。当前客户端入口以模拟宿主验证，尚未联调原生安装包或 CORS 代理。
 
-`test:dist` 检查生产子路径、本地 PDF/Markdown Worker、中文导出、恢复及长译文公式；环境变量 `PAPER_BRIDGE_SMOKE_ENGINE=webkit` 可切换 WebKit。本次 v0.4.0 加载策略修订已通过 98 项单元测试；完整浏览器回归首轮 118 项通过，5 项因新增 Lite 选项及后台 Worker 导致的旧断言已更新并定点复测通过，可选大模型用例另使用真实权重通过。三内核生产 Lite 断网测试通过。上一版本长译文性能优化继续保留，极长且公式密集的段落仍受设备排版性能影响。自动化不等同于所有真机与历史浏览器版本，详情见 DEVELOP.md。
+`test:dist` 检查生产子路径、本地 PDF/Markdown Worker、中文导出、恢复及长译文公式；环境变量 `PAPER_BRIDGE_SMOKE_ENGINE=webkit` 可切换 WebKit。本次 v0.4.0 加载与兼容性修订已通过 100 项单元测试；完整浏览器回归首轮 118 项通过，新增的首屏延迟、Lite 生命周期、移动选区和 Apple WebKit 用例另行通过，可选大模型用例使用真实权重通过。三内核生产 Lite 断网测试通过。上一版本长译文性能优化继续保留，极长且公式密集的段落仍受设备排版性能影响。自动化不等同于所有真机与历史浏览器版本，详情见 DEVELOP.md。
 
 `npm run format` 只格式化应用、样式、工具与测试，不修改用户提供的 UI 规则或参考项目。v0.4.0 生产构建约 89.4 MiB，其中包含 Lite、独立 WASM/ONNX 运行库、PDF 资源和中文导出字体；Plus/Pro 权重不随包分发，两者共用现有 ONNX 运行库。只有实际导出时执行 PDF 编辑模块。离线生产测试覆盖子路径、真实 Lite 推理、缓存、断开源站后重载、PDF 和默认引擎恢复；设置 `PAPER_BRIDGE_SMOKE_ENGINE=firefox` 或 `webkit` 可切换测试内核。真实 Plus/Pro 浏览器用例需设置 `PAPER_BRIDGE_TEST_MODEL_DIR`，目录下放置清单固定版本的 `offline-plus/`、`offline-pro/` 文件；默认跳过此约 1 GiB 测试数据，详见 DEVELOP.md。
 

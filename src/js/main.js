@@ -130,14 +130,19 @@ class App {
     this.renderToolbar();
     await this.assistant.render();
     startOfflineTranslation();
+    // Show the entry controls before a saved PDF or a browser permission can wait.
+    await onboarding(this);
     if (this.openIds.length)
       await this.openDocument(
         this.openIds.includes(workspace?.activeId) ? workspace.activeId : this.openIds[0],
       );
-    const persistence = await requestPersistence();
-    document.getElementById('save-status').title = persistence
-      ? '浏览器已允许持久存储'
-      : '本地自动保存；建议定期备份，以应对浏览器数据清理';
+    requestPersistence()
+      .catch(() => false)
+      .then((persistence) => {
+        document.getElementById('save-status').title = persistence
+          ? '浏览器已允许持久存储'
+          : '本地自动保存；建议定期备份，以应对浏览器数据清理';
+      });
     scheduleSync(
       (message) => this.setSyncStatus(message),
       (e) => this.setSyncStatus(errorMessage(e)),
@@ -148,7 +153,6 @@ class App {
         (e) => this.setSyncStatus(errorMessage(e)),
       ),
     );
-    await onboarding(this);
   }
   mount() {
     document.getElementById('app').innerHTML =

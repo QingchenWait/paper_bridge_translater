@@ -11,13 +11,14 @@ import { TextAnnotations } from './text-annotations.js';
 import { writeAnnotations } from './annotation-writes.js';
 const base = import.meta.env.BASE_URL;
 export async function loadPdf(blob, onPassword) {
-  const pdfjs = await getPdfEngine();
+  const [pdfjs, bytes] = await Promise.all([getPdfEngine(), blob.arrayBuffer()]);
+  const resource = (path) => new URL(path, document.baseURI).href;
   const task = pdfjs.getDocument({
-    data: new Uint8Array(await blob.arrayBuffer()),
-    cMapUrl: `${base}pdfjs/cmaps/`,
+    data: new Uint8Array(bytes),
+    cMapUrl: resource(`${base}pdfjs/cmaps/`),
     cMapPacked: true,
-    standardFontDataUrl: `${base}pdfjs/standard_fonts/`,
-    wasmUrl: `${base}pdfjs/wasm/`,
+    standardFontDataUrl: resource(`${base}pdfjs/standard_fonts/`),
+    wasmUrl: resource(`${base}pdfjs/wasm/`),
     isEvalSupported: false,
     ...applePdfOptions,
   });
@@ -81,12 +82,14 @@ export class PdfViewer {
     this.drawingOptions = { noteSize: 12, textSize: 14, penWidth: 2, shape: 'rectangle' };
     this.pointers = new Set();
     this.selectionPointers = new Set();
+    this.selectionGesture = false;
     this.touchCount = 0;
     this.textAnnotations = new TextAnnotations(this);
     document.addEventListener(
       'pointerdown',
       (event) => {
         if (container.contains(event.target)) {
+          this.selectionGesture = true;
           this.pointers.add(event.pointerId);
           clearTimeout(this.releaseTimer);
           this.selectionPointers.add(event.pointerId);
@@ -118,6 +121,13 @@ export class PdfViewer {
         this.pointers.delete(event.pointerId);
         this.selectionPointers.delete(event.pointerId);
         clearTimeout(this.releaseTimer);
+        const selection = window.getSelection();
+        if (
+          !selection?.rangeCount ||
+          selection.isCollapsed ||
+          !container.contains(selection.getRangeAt(0).commonAncestorContainer)
+        )
+          this.selectionGesture = false;
         this.releaseTextSelection();
       },
       true,
@@ -126,6 +136,7 @@ export class PdfViewer {
       'touchstart',
       (event) => {
         if (container.contains(event.target) || this.pdfTouch) {
+          this.selectionGesture = true;
           this.touchCount = event.touches.length;
           this.pdfTouch = true;
           clearTimeout(this.releaseTimer);
@@ -151,6 +162,13 @@ export class PdfViewer {
         this.touchCount = 0;
         this.pdfTouch = false;
         clearTimeout(this.releaseTimer);
+        const selection = window.getSelection();
+        if (
+          !selection?.rangeCount ||
+          selection.isCollapsed ||
+          !container.contains(selection.getRangeAt(0).commonAncestorContainer)
+        )
+          this.selectionGesture = false;
         this.releaseTextSelection();
       },
       { capture: true, passive: true },
@@ -159,6 +177,7 @@ export class PdfViewer {
       this.pointers.clear();
       this.selectionPointers.clear();
       this.touchCount = 0;
+      this.selectionGesture = false;
       clearTimeout(this.releaseTimer);
       this.releaseTextSelection();
     });
@@ -166,8 +185,12 @@ export class PdfViewer {
       clearTimeout(this.selectionTimer);
       this.selectionTimer = setTimeout(
         () => {
-          if (!document.activeElement?.closest('#pdf-toolbar, #overlay-root, #color-popover'))
-            this.captureSelection();
+          if (document.activeElement?.closest('#pdf-toolbar, #overlay-root, #color-popover')) return;
+          // Native Android/iOS selection handles may publish their final range
+          // after pointerup/touchend. Re-read that range once the gesture is idle.
+          const settled = !this.pointers.size && !this.touchCount && !this.annotationDrag;
+          const translate = settled && this.selectionGesture;
+          this.captureSelection({ translate });
         },
         matchMedia('(pointer: coarse)').matches ? 250 : 60,
       );
@@ -553,6 +576,7 @@ export class PdfViewer {
   clearSelection(clearNative = true) {
     this.selection = null;
     this.translatedSelectionKey = '';
+    this.selectionGesture = false;
     clearTimeout(this.releaseTimer);
     if (clearNative) window.getSelection()?.removeAllRanges();
     this.callbacks.selectionState?.({});

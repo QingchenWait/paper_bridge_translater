@@ -47,7 +47,9 @@ async function setup(page) {
     }),
   );
   await page.locator('#pdf-input').setInputFiles(await fixture());
-  await expect(page.locator('.pdf-page[data-page="1"] .textLayer span').first()).toBeVisible();
+  await expect(page.locator('.pdf-page[data-page="1"] .textLayer span').first()).toBeVisible({
+    timeout: 15000,
+  });
 }
 async function select(page, text = 'Select these words', release = true) {
   await page.evaluate(
@@ -80,6 +82,102 @@ async function configure(page) {
     });
   });
 }
+test('defers the Markdown renderer until a rich assistant view is opened', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('checkbox', { name: '不再显示', exact: true }).check();
+  await page.getByRole('button', { name: '直接进入 APP' }).click();
+  const initial = await page.evaluate(() =>
+    performance.getEntriesByType('resource').map((entry) => entry.name),
+  );
+  const richRenderer = (name) =>
+    /(?:\/|-)markdown(?:[./_-]|$)|(?:\/|-)katex(?:[./_-]|$)|highlight(?:_js|\.js|\.css)/i.test(name);
+  expect(initial.some(richRenderer)).toBe(false);
+  await page.locator('#pdf-input').setInputFiles(await fixture());
+  await expect(page.locator('.textLayer span').first()).toBeVisible({ timeout: 15000 });
+  await page.locator('[data-assistant-tab="chat"]').click();
+  await expect(page.locator('#chat-input')).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        performance
+          .getEntriesByType('resource')
+          .some((entry) => /(?:\/|-)markdown(?:[./_-]|$)/i.test(entry.name)),
+      ),
+    )
+    .toBe(true);
+});
+for (const mobile of [false, true])
+  test(
+    'entry controls do not wait for persistence or a restored PDF on ' + (mobile ? 'mobile' : 'desktop'),
+    async ({ page }) => {
+      if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+      await page.addInitScript(() => {
+        navigator.storage.persist = () => new Promise(() => {});
+      });
+      await page.goto('/');
+      await page.getByRole('button', { name: '直接进入 APP', exact: true }).click();
+      await page.locator('#pdf-input').setInputFiles(await fixture());
+      await expect(page.locator('.textLayer span').first()).toBeVisible({ timeout: 15000 });
+      await expect(page.locator('#document-tabs')).toHaveAttribute('aria-busy', 'false');
+      let release;
+      const held = new Promise((done) => {
+        release = done;
+      });
+      let requested = false;
+      await page.route(/pdfjs-dist(?:_|\/)legacy(?:_|\/)build(?:_|\/)pdf(?:__|\.)mjs/, async (route) => {
+        requested = true;
+        await held;
+        await route.continue().catch(() => {});
+      });
+      try {
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await expect(page.getByRole('button', { name: '直接进入 APP', exact: true })).toBeVisible();
+        await expect.poll(() => requested).toBe(true);
+        expect(await page.locator('.textLayer span').count()).toBe(0);
+        await page.getByRole('button', { name: '直接进入 APP', exact: true }).click();
+        await page.locator((mobile ? '.mobile-nav' : '.sidebar') + ' [data-action=settings]').click();
+        await expect(page.getByRole('dialog', { name: '设置', exact: true })).toBeVisible();
+        await page.keyboard.press('Escape');
+        release();
+        await expect(page.locator('.textLayer span').first()).toBeVisible({ timeout: 15000 });
+      } finally {
+        release();
+      }
+    },
+  );
+
+for (const view of ['selection', 'chat'])
+  test('a delayed ' + view + ' renderer does not overwrite a newer assistant tab', async ({ page }) => {
+    await setup(page);
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    let release;
+    const held = new Promise((done) => {
+      release = done;
+    });
+    let requested = false;
+    await page.route('**/src/js/markdown.js', async (route) => {
+      requested = true;
+      await held;
+      await route.continue().catch(() => {});
+    });
+    try {
+      if (view === 'selection') await select(page);
+      else await page.locator('[data-assistant-tab="chat"]').click();
+      await expect.poll(() => requested).toBe(true);
+      await page.locator('[data-assistant-tab="full"]').click();
+      await expect(page.locator('#full-controls')).toBeVisible();
+      release();
+      await page.evaluate(() => import('/src/js/markdown.js'));
+      await expect(page.locator('#full-controls')).toBeVisible();
+      await expect(page.locator('#chat-input')).toHaveCount(0);
+      await expect(page.locator('#selection-result')).toHaveCount(0);
+      expect(errors).toEqual([]);
+    } finally {
+      release();
+    }
+  });
+
 test('translation waits for mouse and touch release, not selectionchange while held', async ({ page }) => {
   await setup(page);
   let requests = 0;
@@ -113,6 +211,38 @@ test('translation waits for mouse and touch release, not selectionchange while h
   await expect.poll(() => requests).toBe(2);
   await page.waitForTimeout(300);
   expect(requests).toBe(2);
+});
+test('a final native selectionchange after pointer release translates the updated range', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setup(page);
+  const requests = [];
+  await page.route('https://api.mymemory.translated.net/**', (route) => {
+    requests.push(new URL(route.request().url()).searchParams.get('q'));
+    return route.fulfill({ json: { responseStatus: 200, responseData: { translatedText: '最终选区' } } });
+  });
+  const scroll = page.locator('#pdf-scroll');
+  await scroll.dispatchEvent('pointerdown', { pointerId: 8, pointerType: 'touch', button: 0 });
+  await select(page, 'Select these', false);
+  await scroll.dispatchEvent('pointerup', { pointerId: 8, pointerType: 'touch' });
+  await expect.poll(() => requests).toEqual(['Select these']);
+  // Native selection handles often send no DOM pointer/touch events at all.
+  // Allow the initial selection debounce to expire before extending it.
+  await page.waitForTimeout(350);
+  await select(page, 'Select these words for translation.', false);
+  await expect.poll(() => requests).toEqual(['Select these', 'Select these words for translation.']);
+  await select(page, 'words for translation', false);
+  await expect.poll(() => requests).toHaveLength(3);
+  await page.evaluate(() => document.dispatchEvent(new Event('selectionchange')));
+  await page.waitForTimeout(350);
+  expect(requests).toHaveLength(3);
+  // Android hands ownership to native selection UI with pointercancel.
+  await scroll.dispatchEvent('pointerdown', { pointerId: 9, pointerType: 'touch', button: 0 });
+  await scroll.dispatchEvent('pointercancel', { pointerId: 9, pointerType: 'touch' });
+  await select(page, 'these words for translation.', false);
+  await expect.poll(() => requests).toHaveLength(4);
+  expect(await scroll.evaluate((el) => el.scrollTop)).toBeLessThan(50);
 });
 test('chat displays a thinking ring until the first answer and clears it on failure', async ({ page }) => {
   await setup(page);

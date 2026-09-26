@@ -5,9 +5,15 @@ import { PDFDocument, StandardFonts } from 'pdf-lib';
 // WebKit on Windows cannot store Blob in ephemeral contexts; a temporary
 // persistent profile exercises real IndexedDB without changing application data.
 const modes = [
-  { name: 'macOS Safari', viewport: { width: 1440, height: 900 }, touch: false },
-  { name: 'iPad desktop identity', viewport: { width: 820, height: 1180 }, touch: true, ipad: true },
-  { name: 'iPhone Safari', viewport: { width: 390, height: 844 }, touch: true },
+  { name: 'macOS Safari', viewport: { width: 1440, height: 900 }, touch: false, safariCompatGap: true },
+  {
+    name: 'iPad desktop identity',
+    viewport: { width: 820, height: 1180 },
+    touch: true,
+    ipad: true,
+    safariCompatGap: true,
+  },
+  { name: 'iPhone Safari', viewport: { width: 390, height: 844 }, touch: true, safariCompatGap: true },
 ];
 for (const mode of modes)
   test(`Apple compatibility renders, selects and edits with missing APIs on ${mode.name}`, async ({
@@ -48,6 +54,11 @@ for (const mode of modes)
       delete Uint8Array.fromBase64;
       delete ReadableStream.prototype[Symbol.asyncIterator];
       delete ReadableStream.prototype.values;
+      if (mode.safariCompatGap) {
+        delete AbortSignal.any;
+        delete AbortSignal.timeout;
+        delete ArrayBuffer.prototype.transferToFixedLength;
+      }
     }, mode);
     try {
       await page.goto(baseURL);
@@ -68,7 +79,7 @@ for (const mode of modes)
         mimeType: 'application/pdf',
         buffer: Buffer.from(await pdf.save()),
       });
-      await expect(page.locator('.textLayer span').first()).toBeVisible();
+      await expect(page.locator('.textLayer span').first()).toBeVisible({ timeout: 15000 });
       expect(workers.some((url) => url.includes('pdf.worker'))).toBe(true);
       await expect(page.locator('.toast.error')).toHaveCount(0);
       const first = page.locator('.pdf-page[data-page="1"]');

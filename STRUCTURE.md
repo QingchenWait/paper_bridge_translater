@@ -12,7 +12,7 @@ pdf_translater/
 ├─ index.html                      唯一页面入口、文件输入、弹窗和提示容器
 ├─ package.json                    版本、依赖和 npm 命令
 ├─ package-lock.json               精确依赖锁定
-├─ vite.config.js                  相对路径静态构建与本地开发配置
+├─ vite.config.js                  相对路径静态构建、本地依赖排除与入口预转换配置
 ├─ playwright.config.js            Chrome/Chromium 端到端测试配置
 ├─ LICENSE                         项目 GPL-3.0
 ├─ README.md                       用户使用说明、部署和能力边界
@@ -77,12 +77,12 @@ pdf_translater/
 │  │  ├─ archive.js                ZIP、AES、校验、迁移、WebDAV
 │  │  ├─ compat/
 │  │  │  ├─ apple-webkit.js         Apple WebKit 检测、PDF 选项、触控放置与比例菜单 portal
-│  │  │  ├─ pdf-runtime.js         各平台缺失 Promise/ReadableStream 能力的按需补齐
+│  │  │  ├─ pdf-runtime.js         各平台缺失 Promise/AbortSignal/ArrayBuffer/ReadableStream 能力的按需补齐
 │  │  │  └─ pdf.worker.js          各平台官方 legacy PDF.js 与通用运行时的 Worker 入口
 │  │  └─ ui/
 │  │     ├─ components.js          图标、按钮、下拉、弹窗、提示、输入框
 │  │     ├─ document-tabs.js       文件卡片溢出、左右按钮/拖动、激活文件定位
-│  │     ├─ assistant.js           划词、全文、AI 会话与任务状态
+│  │     ├─ assistant.js           划词、全文、AI 会话与任务状态；富文本渲染器按需加载
 │  │     ├─ translation-engine.js  引擎枚举、分组菜单、品牌触发器及共享保存
 │  │     ├─ reading-fonts.js        三组阅读字号按钮、范围状态和显示比例应用
 │  │     ├─ library.js             文档管理卡片/列表、多选和操作弹窗
@@ -142,7 +142,7 @@ pdf_translater/
 │  ├─ search-geometry.test.mjs     搜索过滤、跨文本片段、移动边界与命中测试
 │  ├─ library.test.mjs             目录/删除边界、事务回滚、共享历史、ZIP 和冲突测试
 │  ├─ file-fingerprints.test.mjs   原始 MD5、分块/独立身份、旧记录补算/删除竞态与存档
-│  ├─ apple-webkit.test.mjs        Apple 平台识别、Promise 与 ReadableStream 回退
+│  ├─ apple-webkit.test.mjs        Apple 平台识别、Promise/AbortSignal/ReadableStream 回退
 │  └─ e2e/
 │     ├─ apple-webkit.spec.js      WebKit 桌面/iPad/iPhone 的渲染、翻页、缩放、触控编辑
 │     ├─ pdf-performance.spec.js   样本全页布局预算、Firefox 响应及窗口/Worker 缺失能力
@@ -434,11 +434,11 @@ HTTP(S) 服务需支持 `.mjs/.js` JavaScript 与 `.wasm` MIME；HTTPS/localhost
 
 - `pdf-engine.getPdfEngine()`：首次打开 PDF 时加载同一版本的官方 legacy 主库及匹配 Worker，所有平台一致；上游 core-js 在窗口/Worker 中提供缺失 Map/WeakMap/Iterator 等标准能力，失败清空加载 Promise 以便重试。
 - `compat/apple-webkit.applePlatform()`：按 AppleWebKit UA、Mac/iPad 平台及触控能力选择专用交互规则；`installAppleWebKit` 仅设置 Apple 根节点标记；`applePdfOptions` 保留 Apple 图像解码参数；`releaseAppleCanvases` 在 Apple 切页/重排时释放旧画布。PDF JavaScript 能力补齐不再按此 UA 分流。
-- `compat/pdf-runtime.installPdfRuntime()`：在 App.init、getPdfEngine 和 PDF Worker 中补齐缺失的 Promise.withResolvers 和 ReadableStream 异步迭代，原生实现不变；`installPromiseResolvers` 保留 Promise 子类语义，`installStreamIterator` 串行读取、结束释放锁、提前退出按 preventCancel 决定取消。
+- `compat/pdf-runtime.installPdfRuntime()`：模块评估时及 App.init、getPdfEngine、PDF Worker 显式补齐缺失的 Promise.withResolvers、AbortSignal.any/timeout、ArrayBuffer.transferToFixedLength 和 ReadableStream 异步迭代，保证 Worker 依赖 PDF.js 前已安装。`installAbortSignal` 合并首个取消原因、清理监听并生成 TimeoutError；`installArrayBufferTransfer` 复制固定长度；`installPromiseResolvers` 保留 Promise 子类语义；`installStreamIterator` 串行读取、结束释放锁、提前退出按 preventCancel 决定取消。
 - `compat/apple-webkit.deferAppleTextPlacement()`：iPhone/iPad 的文本框创建等待 touchend，避免 touchstart 聚焦引发 pointercancel 和空框自动删除。`openAppleMenu/restoreAppleMenu`：只将 PDF 工具栏自绘比例菜单临时移动到 body 层，关闭后恢复原父节点。
-- `loadPdf(blob,onPassword)`：传入本地二进制及本地 CMap/字体/WASM；密码通过回调获取；为 PDF.js 6 的 loading task 提供统一 destroy 适配。
+- `loadPdf(blob,onPassword)`：并行加载兼容引擎和读取 Blob 缓冲；传入本地二进制及以 `document.baseURI` 解析的绝对同源 CMap/字体/WASM 目录，避免 Worker 入口位于 `/assets/` 时相对路径偏移；密码通过回调获取；为 PDF.js 6 的 loading task 提供统一 destroy 适配。
 - `extractPdfText(pdf,onProgress)`：顺序获取每页文字，按位置移除页边纯数字行号，附页码。
-- `PdfViewer.constructor`：绑定 Pointer/Touch 按下、松开、取消和键盘释放；仅跟踪 PDF 选择手势，selectionchange 只更新选区状态。文档外松手也可完成从 PDF 开始的选择，多触点未全部离开时不翻译。
+- `PdfViewer.constructor`：绑定 Pointer/Touch 按下、松开、取消和键盘释放；记录来自 PDF 的选择手势。文档级 selectionchange 在最终 Range 发布且无活动指针/触控后重新读取并触发一次去重翻译；脚本选区、编辑工具和工具栏选区不会误触发。文档外松手也可完成从 PDF 开始的选择，多触点未全部离开时不翻译。
 - `queueSelectionTranslation(delay)`：只在文字选择模式、无活动指针/触控/原位编辑时提交；鼠标松开立即提交，触控结束延迟 60ms 等待原生选区稳定，同一完成选区去重。
 - `setDrawingOptions(options)`：同步后续批注/文本框字号、手绘笔宽和形状类型；绘制开始时冻结参数，不修改已有记录。
 - `open(doc,pdf)`：结束并等待原位编辑，再取消旧渲染、切换文档和批注。
@@ -581,6 +581,7 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 ### ui/assistant.js 的 Assistant
 
 - `constructor` / `render`：绑定右栏标签，按渲染 epoch 防止旧异步视图覆盖新视图。
+- `loadMarkdown()`：划词首次出现富文本结果、进入聊天时动态加载 Markdown/KaTeX/代码高亮，缓存 Promise、失败可重试；全文存在记录时另动态加载 FullMarkdown。切换标签期间以 epoch 和 DOM 连接状态丢弃过时结果；`appendMessage` 接收已加载的 mountMarkdown 函数。
 - `renderEngine(settings)`：划词页更新顶部引擎，其他页隐藏；订阅 settings-changed，按内容签名去重，保存时保留焦点，失败恢复已持久化的选项。
 - `renderSelection` / `translateSelection`：内存缓存按文档分组；新选区取消旧请求；在线引擎的单词与句子分流，离线引擎全部本地推理。
 - `readingFonts`：render 读取 settings 后 update；renderSelection、renderFull、全文历史/流式挂载后 apply，控制三块独立字号，不触发翻译或重建整个助手视图。
@@ -601,7 +602,7 @@ API 页面紧凑样式只使用 #provider-form 范围选择器：桌面输入 pa
 
 | 方法 | 功能 |
 | --- | --- |
-| constructor / init | 初始化状态、数据库、界面、持久存储请求、恢复标签/对话和首次引导 |
+| constructor / init | 初始化状态/数据库/控件；先展示引导再恢复 PDF，持久存储请求不阻塞启动；保留离线模型选择后调度 |
 | mount / bind / action | 生成静态界面骨架、委托动作、导入拖放、快捷键、尺寸变化 |
 | importFiles(files,{folderId}?) | 捕获文件列表/目标目录，单页面队列串行处理；可用时以 Web Locks 同源锁协调多标签页，再委托 performImportFiles |
 | performImportFiles / confirmDuplicate | 计算原始 MD5、全库匹配；重复时显示是/否，否及关闭跳过当前文件，是追加“副本”并创建独立 id/rootId；校验并事务入库后打开，批量目标目录保持最初选择 |

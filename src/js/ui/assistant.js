@@ -13,8 +13,6 @@ import { cleanPdfText, isSingleWord, CLEANING_INSTRUCTIONS } from '../text.js';
 import { lookupWord, onlineTranslate, LANGUAGES } from '../translation.js';
 import { BASIC_APIS, basicOptions } from '../basic-translation.js';
 import { isOfflineModel } from '../offline/catalog.js';
-import { mountMarkdown } from '../markdown.js';
-import { FullMarkdown } from '../full-markdown.js';
 import { TranslationWriter } from '../translation-writes.js';
 import { uid, esc, dateLabel, errorMessage, chooseSaveTarget, saveFile } from '../utils.js';
 import {
@@ -30,6 +28,12 @@ import {
   toast,
   inputDialog,
 } from './components.js';
+let markdownPromise;
+const loadMarkdown = () =>
+  (markdownPromise ||= import('../markdown.js').catch((error) => {
+    markdownPromise = null;
+    throw error;
+  }));
 function dictionaryLink(label, value) {
   try {
     const url = new URL(value);
@@ -80,7 +84,7 @@ export class Assistant {
       btn.classList.toggle('active', btn.dataset.assistantTab === this.tab);
       btn.setAttribute('aria-selected', String(btn.dataset.assistantTab === this.tab));
     });
-    if (this.tab === 'selection') this.renderSelection();
+    if (this.tab === 'selection') await this.renderSelection();
     if (this.tab === 'full') await this.renderFull(epoch);
     if (this.tab === 'chat') await this.renderChat(epoch);
   }
@@ -114,7 +118,7 @@ export class Assistant {
       }
     });
   }
-  renderSelection() {
+  async renderSelection() {
     const entry = this.selections.get(this.app.activeId);
     if (!entry) {
       this.root.innerHTML = `<div class="assistant-empty"><div class="empty-orbit"><img src="${illustration('sparkles')}" alt=""></div><span class="eyebrow">A LITTLE HELP, A LOT OF CLARITY</span><h2>PDF 中选中词句，实时转译</h2><p>支持 LLM 翻译 & 传统快速机翻<br>内置机翻<b>额度有限</b>，可前往设置，申请+配置免费 API</p><div class="empty-tip">${icon('languages')}单词查词典 · 句子即刻翻译</div></div><div class="assistant-bottom-note">${icon('shield-check')}划词结果仅在本次阅读中保留</div>`;
@@ -168,7 +172,11 @@ export class Assistant {
         if (url) new Audio(url).play().catch(() => this.speak(entry.original, 'en'));
         else this.speak(entry.original, 'en');
       };
-    } else mountMarkdown(target, entry.result || '');
+    } else if (entry.result) {
+      const { mountMarkdown } = await loadMarkdown();
+      if (this.selections.get(this.app.activeId) !== entry || !target.isConnected) return;
+      mountMarkdown(target, entry.result);
+    }
     this.readingFonts.apply();
     const result = entry.dictionary
       ? entry.dictionary.chinese ||
@@ -219,7 +227,7 @@ export class Assistant {
     document.dispatchEvent(new Event('selection-translated'));
     const refresh = () => {
       if (this.app.activeId === id && this.tab === 'selection' && this.selections.get(id) === entry)
-        this.renderSelection();
+        this.renderSelection().catch((error) => toast(errorMessage(error), 'error'));
     };
     try {
       if (
@@ -380,6 +388,11 @@ export class Assistant {
         : ''
     }</div>`;
     if (preserved) this.root.querySelector('#full-result').replaceWith(preserved);
+    if (latest && !this.fullMarkdownClass) {
+      const { FullMarkdown } = await import('../full-markdown.js');
+      if (epoch !== this.epoch) return;
+      this.fullMarkdownClass = FullMarkdown;
+    }
     if (latest) this.mountFull(latest);
     this.readingFonts.apply();
     if (latest) {
@@ -439,7 +452,7 @@ export class Assistant {
     if (!this.fullRenderer || this.fullRenderer.host !== host || this.fullRenderer.recordId !== record.id) {
       this.fullRenderer?.destroy();
       host.replaceChildren();
-      this.fullRenderer = new FullMarkdown(
+      this.fullRenderer = new this.fullMarkdownClass(
         host,
         (scope) => this.readingFonts.apply(scope),
         (error) => toast(errorMessage(error), 'error'),
@@ -648,6 +661,8 @@ export class Assistant {
       .filter((m) => m.conversationId === threadId)
       .sort((a, b) => a.createdAt - b.createdAt);
     if (epoch !== this.epoch) return;
+    const { mountMarkdown } = await loadMarkdown();
+    if (epoch !== this.epoch) return;
     const job = this.jobs.get(`chat:${threadId}`);
     this.root.innerHTML = `<div class="chat-panel"><div class="chat-top"><div>${select('chat-thread', threads.length ? threads.map((t) => [t.id, t.title]) : [['', '新对话']], threadId, '历史对话')}</div>${iconButton('rename-thread', 'pencil', '重命名对话')}${iconButton('new-thread', 'plus', '新建独立对话')}</div><div class="chat-context">${icon('file-text')}<span>${esc(doc.name)}</span><span class="context-dot"></span>全文上下文</div><div class="chat-messages" id="chat-messages">${messages.length ? '' : `<div class="chat-welcome"><div class="ai-symbol">${icon('sparkles')}</div><h2>与这篇文档聊一聊</h2><p>从一个问题开始，走近文章的核心。</p><div class="suggestions">${['这篇论文的核心贡献是什么？', '解释文中的关键方法', '总结研究的局限与未来方向'].map((q) => `<button data-question="${q}">${icon('message-square')}${q}${icon('arrow-up-right')}</button>`).join('')}</div></div>`}</div><form class="chat-composer" id="chat-form"><textarea id="chat-input" rows="3" placeholder="询问这篇文档的任何问题…" aria-label="向 AI 提问"></textarea><div class="composer-bottom">${select(
       'chat-provider',
@@ -656,7 +671,7 @@ export class Assistant {
       '问答 API',
     )}<span class="composer-hint">Enter 发送</span>${job ? iconButton('cancel-chat', 'stop-circle', '停止生成', 'primary') : `<button type="submit" class="icon-button primary" title="发送" aria-label="发送">${icon('send')}</button>`}</div></form><div class="chat-disclaimer">AI 回答仅供参考，请结合原文核实 · 对话自动保存</div></div>`;
     const list = this.root.querySelector('#chat-messages');
-    for (const message of messages) this.appendMessage(list, message);
+    for (const message of messages) this.appendMessage(list, message, mountMarkdown);
     list.scrollTop = list.scrollHeight;
     bindSelects(this.root);
     this.root.querySelector('[data-select="chat-thread"]').addEventListener('valuechange', (event) => {
@@ -700,7 +715,7 @@ export class Assistant {
       .querySelector('[data-action="cancel-chat"]')
       ?.addEventListener('click', () => job.controller.abort());
   }
-  appendMessage(list, message) {
+  appendMessage(list, message, mountMarkdown) {
     const card = document.createElement('div');
     card.className = `chat-message ${message.role}`;
     card.dataset.messageId = message.id;
@@ -762,6 +777,7 @@ export class Assistant {
       });
       input.value = '';
       await this.render();
+      const { mountMarkdown } = await loadMarkdown();
       const original = await contextDocument(doc.rootId, doc.id);
       if (!original) throw new Error('该文档组已删除');
       const file = await get('files', original.id);

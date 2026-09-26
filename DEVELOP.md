@@ -1,5 +1,23 @@
 # 开发记录
 
+## v0.4.0 同版本修订 · 首屏与 PDF 首次打开性能 · 2026-09-27
+
+- 首屏不再静态引入 Markdown、KaTeX、代码高亮及全文渲染控制器。`Assistant` 只有在划词结果需要富文本、进入聊天或存在全文译文时才加载对应模块；生产入口脚本由约 1.12 MB 降至约 310 kB，阅读页交互保持不变。新异步边界检查 epoch/DOM 连接状态，避免快速切页时旧结果覆盖新视图；加载失败允许重试。
+- 恢复工作区时先显示引导和可操作界面，不再串行等待已保存 PDF 完整打开或 `navigator.storage.persist()`；持久存储权限在后台更新状态。Lite 离线模型的选择监听、Worker 调度、按需加载和缓存策略不变。
+- 开发服务的依赖优化排除按需加载的 `pdfjs-dist`、模型 Worker 哈希模块，避免离线管理和 PDF Worker 首次被发现时出现 `optimized dependencies changed. reloading`；主入口、助手和 PDF 控制模块用 `server.warmup` 预转换，PDF.js 仍只在打开文档时转换和下载，不会拖慢首屏。该配置仅影响开发预构建，不会在浏览器中提前加载 PDF 或模型。
+- `loadPdf` 并行准备兼容引擎和本地文件缓冲，减少串行等待；保留原 Uint8Array 数据传输、Worker、预渲染范围和全部 Safari 兼容选项。
+- 新增首屏资源延迟、恢复期间权限阻塞、切换 assistant 页面和密集 PDF 的回归；兼容层、模型二进制、Service Worker、Tauri 静态部署方式和版本号均不变。
+- 验证：100 项单元测试；启动/按需 Markdown、Lite 生命周期、移动选区、Apple WebKit 三场景、Firefox 密集 PDF 和生产静态包检查通过。当前 dist 仍约 89.4 MiB，未将可选模型加入首屏或部署包。
+
+## v0.4.0 同版本修订 · 移动端最终选区与旧 Safari AbortSignal 兼容 · 2026-09-27
+
+- 根因一：移动浏览器长按拖选时，系统选择手柄可能在 `pointerup/touchend` 之后才更新文档 Range。旧逻辑只在释放瞬间读取一次，后续 `selectionchange` 只更新选区状态、不启动翻译，因此滚动触发下一轮事件后才看似恢复。`PdfViewer` 记录一次来自 PDF 的选择手势；文档级 `selectionchange` 在无活动指针/触控后重新读取最终 Range，并沿用 `translatedSelectionKey` 去重。无手势的脚本选区、工具栏和编辑选区不会误触发翻译。
+- 根因二：部分 Safari/WebKit 版本没有 `AbortSignal.any()`/`AbortSignal.timeout()`，而 PDF.js 6.3 legacy 和基础翻译请求都会调用它们；PDF.js Worker 还会调用 `ArrayBuffer.transferToFixedLength()` 编译字体信息。`compat/pdf-runtime.js` 在 PDF.js 及 Worker 评估前补齐这些 API：`any` 保留首个取消原因并移除监听，`timeout` 产生 `TimeoutError`，`transferToFixedLength` 返回指定长度的固定副本；已有原生实现不替换。这样 PDF 渲染 Worker、PDF 主线程和在线翻译共用同一兼容路径。
+- Safari 的 ICC 色彩错误另暴露了 Worker 相对 URL：`./pdfjs/wasm/` 在 `/assets/pdf.worker-*.js` 下会解析到错误目录，取到非 WASM 响应后触发 `module doesn't start with '\0asm'`。`loadPdf` 将 CMap、标准字体和 WASM 目录基于 `document.baseURI` 转为绝对同源 URL，Worker 可直接读取 `qcms_bg.wasm`；静态资源文件和部署体积不变。
+- 未修改 PDF.js、Worker、模型、数据库、离线加载/释放策略或 UI 布局；版本、依赖和静态资源体积保持不变。兼容逻辑只在缺失 API 的浏览器生效，Windows/现代浏览器继续使用原生实现。
+- 新增 AbortSignal/ArrayBuffer 单元测试；Apple WebKit 回归主动移除 `AbortSignal.any/timeout` 及旧 ECMAScript API，覆盖 macOS Safari、iPad 桌面身份和 iPhone 三场景的 PDF 渲染、文字层、选区、笔迹、形状、文本框及刷新。新增移动最终 `selectionchange` 回归，验证拖选释放后翻译只请求一次；生产构建确认仍为 305 文件、约 89.4 MiB。
+- 验证：5 项专项（Apple 三场景、原释放时机、最终选区）通过；兼容单元测试通过。未对真实 macOS 13 硬件或全部 Android 厂商 WebView 做真机验收，需用新 `dist/` 在目标设备复验。
+
 ## v0.4.0 同版本修订 · 文件卡片滚动与固定设置导航 · 2026-09-26
 
 - 新增轻量 `ui/document-tabs.js`：复用原 `#document-tabs`，外层 `.document-tab-strip` 将左右按钮与滚动视口独立分配宽度，桌面“打开 PDF”保留在滚动区外。原生 `scrollBy/scrollLeft`、ResizeObserver 与一次动画帧测量管理溢出和边界禁用，不使用滚动库或定时轮询；尺寸变化时不重复写入相同滚动位置，避免取消正在执行的平滑滚动。

@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applePlatform } from '../src/js/compat/apple-webkit.js';
-import { installStreamIterator, installPromiseResolvers } from '../src/js/compat/pdf-runtime.js';
+import {
+  installAbortSignal,
+  installArrayBufferTransfer,
+  installStreamIterator,
+  installPromiseResolvers,
+} from '../src/js/compat/pdf-runtime.js';
 test('Apple WebKit rules include iPad desktop mode and iOS browsers, but exclude macOS Chrome', () => {
   for (const navigator of [
     {
@@ -76,6 +81,32 @@ test('Apple promise capability fallback preserves subclass semantics and existin
   const native = Promise.withResolvers;
   installPromiseResolvers();
   assert.equal(Promise.withResolvers, native);
+});
+test('Apple AbortSignal fallback composes cancellation and timeout without replacing native helpers', async () => {
+  const NativeAny = AbortSignal.any,
+    NativeTimeout = AbortSignal.timeout;
+  Object.defineProperty(AbortSignal, 'any', { value: undefined, configurable: true, writable: true });
+  Object.defineProperty(AbortSignal, 'timeout', { value: undefined, configurable: true, writable: true });
+  installAbortSignal();
+  const controller = new AbortController(),
+    combined = AbortSignal.any([controller.signal, AbortSignal.timeout(1000)]);
+  controller.abort('selected');
+  assert.equal(combined.aborted, true);
+  assert.equal(combined.reason, 'selected');
+  const timed = AbortSignal.timeout(1);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(timed.aborted, true);
+  Object.defineProperty(AbortSignal, 'any', { value: NativeAny, configurable: true, writable: true });
+  Object.defineProperty(AbortSignal, 'timeout', { value: NativeTimeout, configurable: true, writable: true });
+});
+test('Apple ArrayBuffer fallback keeps PDF.js fixed-length metadata copies usable', () => {
+  class LegacyBuffer extends ArrayBuffer {}
+  installArrayBufferTransfer(LegacyBuffer);
+  const buffer = new LegacyBuffer(12);
+  new Uint8Array(buffer).set([1, 2, 3, 4]);
+  const copy = buffer.transferToFixedLength(4);
+  assert.equal(copy.byteLength, 4);
+  assert.deepEqual([...new Uint8Array(copy)], [1, 2, 3, 4]);
 });
 test('Apple stream iterator reads sequentially, releases locks and does not overwrite a native implementation', async () => {
   const Legacy = LegacyStream(),
